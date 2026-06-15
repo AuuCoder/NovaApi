@@ -107,6 +107,22 @@ export default {
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    },
+    // Magazine-style numbered section labels
+    sections: {
+      index: 'Index / Entry',
+      rules: 'Three Principles',
+      coverage: 'Coverage Matrix',
+      start: 'Start Now'
+    },
+    startHint: 'Ready the moment you sign up. No waiting.',
+    closePull: 'Collapse the complexity of many subscriptions into one unified interface.',
+    coverage: {
+      claudeHint: 'Anthropic full lineup, chat & orchestration',
+      gptHint: 'GPT-5 series & Codex toolchain',
+      geminiHint: 'Gemini 2.5 / 3 / 3.1 full stack',
+      antigravityHint: 'Google Antigravity Agent',
+      moreHint: 'New providers added continuously'
     }
   },
 

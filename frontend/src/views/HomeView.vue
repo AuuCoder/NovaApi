@@ -1,7 +1,6 @@
 <template>
   <!-- Custom Home Content: Full Page Mode -->
   <div v-if="homeContent" class="min-h-screen">
-    <!-- iframe mode -->
     <iframe
       v-if="isHomeContentUrl"
       :src="homeContent.trim()"
@@ -12,393 +11,169 @@
     <div v-else v-html="homeContent"></div>
   </div>
 
-  <!-- Default Home Page -->
-  <div
-    v-else
-    class="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
-  >
-    <!-- Background Decorations -->
-    <div class="pointer-events-none absolute inset-0 overflow-hidden">
-      <div
-        class="absolute -right-40 -top-40 h-96 w-96 rounded-full bg-primary-400/20 blur-3xl"
-      ></div>
-      <div
-        class="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-primary-500/15 blur-3xl"
-      ></div>
-      <div
-        class="absolute left-1/3 top-1/4 h-72 w-72 rounded-full bg-primary-300/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute bottom-1/4 right-1/4 h-64 w-64 rounded-full bg-primary-400/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
-      ></div>
-    </div>
-
+  <!-- Default Home Page (Swiss editorial style) -->
+  <div v-else class="swiss-root" :class="{ 'is-dark': isDark }">
     <!-- Header -->
-    <header class="relative z-20 px-6 py-4">
-      <nav class="mx-auto flex max-w-6xl items-center justify-between">
-        <!-- Logo -->
-        <div class="flex items-center">
-          <div class="h-10 w-10 overflow-hidden rounded-xl shadow-md">
-            <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
-          </div>
+    <header class="swiss-top">
+      <div class="swiss-top__inner">
+        <div class="swiss-mark">
+          <img v-if="siteLogo" :src="siteLogo" alt="Logo" class="swiss-mark__logo" />
+          <span v-else class="swiss-mark__dot" aria-hidden="true"></span>
+          <span class="swiss-mark__name">{{ siteName }}</span>
         </div>
-
-        <!-- Nav Actions -->
-        <div class="flex items-center gap-3">
-          <!-- Language Switcher -->
+        <nav class="swiss-actions">
+          <span class="swiss-meta">{{ editionLabel }}</span>
           <LocaleSwitcher />
-
-          <!-- Doc Link -->
           <a
             v-if="docUrl"
             :href="docUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="t('home.viewDocs')"
+            class="swiss-cta swiss-cta--ghost"
           >
-            <Icon name="book" size="md" />
+            {{ t('home.docs') }}
           </a>
-
-          <!-- Theme Toggle -->
           <button
             @click="toggleTheme"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            class="swiss-link"
             :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
           >
             <Icon v-if="isDark" name="sun" size="md" />
             <Icon v-else name="moon" size="md" />
           </button>
-
-          <!-- Login / Dashboard Button -->
-          <router-link
-            v-if="isAuthenticated"
-            :to="dashboardPath"
-            class="inline-flex items-center gap-1.5 rounded-full bg-gray-900 py-1 pl-1 pr-2.5 transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
-          >
-            <span
-              class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-[10px] font-semibold text-white"
-            >
-              {{ userInitial }}
-            </span>
-            <span class="text-xs font-medium text-white">{{ t('home.dashboard') }}</span>
-            <svg
-              class="h-3 w-3 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
-              />
-            </svg>
+          <router-link v-if="isAuthenticated" :to="dashboardPath" class="swiss-cta">
+            <span class="swiss-cta__avatar">{{ userInitial }}</span>
+            {{ t('home.dashboard') }}
           </router-link>
-          <router-link
-            v-else
-            to="/login"
-            class="inline-flex items-center rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
-          >
+          <router-link v-else to="/login" class="swiss-cta swiss-cta--ghost">
             {{ t('home.login') }}
           </router-link>
-        </div>
-      </nav>
+        </nav>
+      </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="relative z-10 flex-1 px-6 py-16">
-      <div class="mx-auto max-w-6xl">
-        <!-- Hero Section - Left/Right Layout -->
-        <div class="mb-12 flex flex-col items-center justify-between gap-12 lg:flex-row lg:gap-16">
-          <!-- Left: Text Content -->
-          <div class="flex-1 text-center lg:text-left">
-            <h1
-              class="mb-4 text-4xl font-bold text-gray-900 dark:text-white md:text-5xl lg:text-6xl"
+    <main class="swiss-main">
+      <!-- Hero -->
+      <section class="swiss-section swiss-hero">
+        <div class="swiss-rule">
+          <span class="swiss-rule__num">01</span>
+          <span class="swiss-rule__line" aria-hidden="true"></span>
+          <span class="swiss-rule__label">{{ t('home.sections.index') }}</span>
+        </div>
+        <h1 class="swiss-display">
+          <span class="swiss-display__row swiss-display__row--lead">
+            <span class="swiss-display__word">ONE</span>
+            <span class="swiss-display__rule" aria-hidden="true"></span>
+            <span class="swiss-display__word">ONE</span>
+          </span>
+          <span class="swiss-display__row swiss-display__row--trail">
+            <span class="swiss-display__word swiss-display__word--accent">KEY.</span>
+            <span class="swiss-display__word swiss-display__word--accent">WAY IN.</span>
+          </span>
+        </h1>
+        <div class="swiss-hero__bottom">
+          <p class="swiss-lede">{{ t('home.heroDescription') }}</p>
+          <div class="swiss-hero__cta">
+            <router-link
+              :to="isAuthenticated ? dashboardPath : '/login'"
+              class="swiss-button"
             >
-              {{ siteName }}
-            </h1>
-            <p class="mb-8 text-lg text-gray-600 dark:text-dark-300 md:text-xl">
-              {{ siteSubtitle }}
-            </p>
-
-            <!-- CTA Button -->
-            <div>
-              <router-link
-                :to="isAuthenticated ? dashboardPath : '/login'"
-                class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
-              >
-                {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
-                <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
-              </router-link>
-            </div>
-          </div>
-
-          <!-- Right: Terminal Animation -->
-          <div class="flex flex-1 justify-center lg:justify-end">
-            <div class="terminal-container">
-              <div class="terminal-window">
-                <!-- Window header -->
-                <div class="terminal-header">
-                  <div class="terminal-buttons">
-                    <span class="btn-close"></span>
-                    <span class="btn-minimize"></span>
-                    <span class="btn-maximize"></span>
-                  </div>
-                  <span class="terminal-title">terminal</span>
-                </div>
-                <!-- Terminal content -->
-                <div class="terminal-body">
-                  <div class="code-line line-1">
-                    <span class="code-prompt">$</span>
-                    <span class="code-cmd">curl</span>
-                    <span class="code-flag">-X POST</span>
-                    <span class="code-url">/v1/messages</span>
-                  </div>
-                  <div class="code-line line-2">
-                    <span class="code-comment"># Routing to upstream...</span>
-                  </div>
-                  <div class="code-line line-3">
-                    <span class="code-success">200 OK</span>
-                    <span class="code-response">{ "content": "Hello!" }</span>
-                  </div>
-                  <div class="code-line line-4">
-                    <span class="code-prompt">$</span>
-                    <span class="cursor"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
+              <span class="swiss-button__index">→</span>
+              <span class="swiss-button__label">{{
+                isAuthenticated ? t('home.goToDashboard') : t('home.getStarted')
+              }}</span>
+            </router-link>
+            <span class="swiss-meta swiss-meta--inline">{{ t('home.startHint') }}</span>
           </div>
         </div>
+      </section>
 
-        <!-- Feature Tags - Centered -->
-        <div class="mb-12 flex flex-wrap items-center justify-center gap-4 md:gap-6">
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
+      <!-- Pillars -->
+      <section class="swiss-section swiss-pillars">
+        <div class="swiss-rule">
+          <span class="swiss-rule__num">02</span>
+          <span class="swiss-rule__line" aria-hidden="true"></span>
+          <span class="swiss-rule__label">{{ t('home.sections.rules') }}</span>
+        </div>
+        <div class="swiss-pillars__grid">
+          <article class="swiss-pillar">
+            <div class="swiss-pillar__index">01</div>
+            <h3 class="swiss-pillar__title">{{ t('home.features.unifiedGateway') }}</h3>
+            <p class="swiss-pillar__body">{{ t('home.features.unifiedGatewayDesc') }}</p>
+          </article>
+          <article class="swiss-pillar">
+            <div class="swiss-pillar__index">02</div>
+            <h3 class="swiss-pillar__title">{{ t('home.features.multiAccount') }}</h3>
+            <p class="swiss-pillar__body">{{ t('home.features.multiAccountDesc') }}</p>
+          </article>
+          <article class="swiss-pillar">
+            <div class="swiss-pillar__index">03</div>
+            <h3 class="swiss-pillar__title">{{ t('home.features.balanceQuota') }}</h3>
+            <p class="swiss-pillar__body">{{ t('home.features.balanceQuotaDesc') }}</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- Coverage -->
+      <section class="swiss-section swiss-coverage">
+        <div class="swiss-rule">
+          <span class="swiss-rule__num">03</span>
+          <span class="swiss-rule__line" aria-hidden="true"></span>
+          <span class="swiss-rule__label">{{ t('home.sections.coverage') }}</span>
+        </div>
+        <ol class="swiss-coverage__list">
+          <li
+            v-for="(item, i) in coverage"
+            :key="item.name"
+            class="swiss-coverage__row"
           >
-            <Icon name="swap" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.subscriptionToApi')
+            <span class="swiss-coverage__num">{{ String(i + 1).padStart(2, '0') }}</span>
+            <span class="swiss-coverage__name">{{ item.name }}</span>
+            <span class="swiss-coverage__rule" aria-hidden="true"></span>
+            <span class="swiss-coverage__hint">{{ item.hint }}</span>
+            <span class="swiss-coverage__status" :data-state="item.state">{{
+              item.state === 'live' ? t('home.providers.supported') : t('home.providers.soon')
             }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
+          </li>
+        </ol>
+      </section>
+
+      <!-- Close -->
+      <section class="swiss-section swiss-close">
+        <div class="swiss-rule">
+          <span class="swiss-rule__num">04</span>
+          <span class="swiss-rule__line" aria-hidden="true"></span>
+          <span class="swiss-rule__label">{{ t('home.sections.start') }}</span>
+        </div>
+        <p class="swiss-close__pull">{{ t('home.closePull') }}</p>
+        <div class="swiss-close__cta">
+          <router-link
+            :to="isAuthenticated ? dashboardPath : '/login'"
+            class="swiss-button swiss-button--solid"
           >
-            <Icon name="shield" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.stickySession')
+            <span class="swiss-button__label">{{
+              isAuthenticated ? t('home.goToDashboard') : t('home.getStarted')
             }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="chart" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.realtimeBilling')
-            }}</span>
-          </div>
+            <span class="swiss-button__index">→</span>
+          </router-link>
         </div>
-
-        <!-- Features Grid -->
-        <div class="mb-12 grid gap-6 md:grid-cols-3">
-          <!-- Feature 1: Unified Gateway -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-110"
-            >
-              <Icon name="server" size="lg" class="text-white" />
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.unifiedGateway') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.unifiedGatewayDesc') }}
-            </p>
-          </div>
-
-          <!-- Feature 2: Account Pool -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/30 transition-transform group-hover:scale-110"
-            >
-              <svg
-                class="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"
-                />
-              </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.multiAccount') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.multiAccountDesc') }}
-            </p>
-          </div>
-
-          <!-- Feature 3: Billing & Quota -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg shadow-purple-500/30 transition-transform group-hover:scale-110"
-            >
-              <svg
-                class="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
-                />
-              </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.balanceQuota') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.balanceQuotaDesc') }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Supported Providers -->
-        <div class="mb-8 text-center">
-          <h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">
-            {{ t('home.providers.title') }}
-          </h2>
-          <p class="text-sm text-gray-600 dark:text-dark-400">
-            {{ t('home.providers.description') }}
-          </p>
-        </div>
-
-        <div class="mb-16 flex flex-wrap items-center justify-center gap-4">
-          <!-- Claude - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-orange-500"
-            >
-              <span class="text-xs font-bold text-white">C</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.claude') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- GPT - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Gemini - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.gemini') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Antigravity - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-pink-600"
-            >
-              <span class="text-xs font-bold text-white">A</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.antigravity') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- More - Coming Soon -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-gray-200/50 bg-white/40 px-5 py-3 opacity-60 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/40"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-gray-500 to-gray-600"
-            >
-              <span class="text-xs font-bold text-white">+</span>
-            </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.more') }}</span>
-            <span
-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400"
-              >{{ t('home.providers.soon') }}</span
-            >
-          </div>
-        </div>
-      </div>
+      </section>
     </main>
 
     <!-- Footer -->
-    <footer class="relative z-10 border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
-      <div
-        class="mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left"
-      >
-        <p class="text-sm text-gray-500 dark:text-dark-400">
-          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
-        </p>
-        <div class="flex items-center gap-4">
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >
-            {{ t('home.docs') }}
-          </a>
-          <a
-            :href="githubUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >
-            GitHub
-          </a>
-        </div>
+    <footer class="swiss-foot">
+      <div class="swiss-foot__inner">
+        <span class="swiss-meta">&copy; {{ currentYear }} {{ siteName }}</span>
+        <span class="swiss-meta swiss-meta--mute">{{ t('home.footer.allRightsReserved') }}</span>
+        <a
+          v-if="docUrl"
+          :href="docUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="swiss-foot__link"
+        >
+          {{ t('home.docs') }}
+        </a>
       </div>
     </footer>
   </div>
@@ -419,7 +194,6 @@ const appStore = useAppStore()
 // Site settings - directly from appStore (already initialized from injected config)
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'NovaAPI')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 
@@ -432,21 +206,32 @@ const isHomeContentUrl = computed(() => {
 // Theme
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
-// GitHub URL
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
-
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
-const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
+const dashboardPath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
 const userInitial = computed(() => {
   const user = authStore.user
   if (!user || !user.email) return ''
   return user.email.charAt(0).toUpperCase()
 })
 
-// Current year for footer
+// Current year + edition label (magazine masthead)
 const currentYear = computed(() => new Date().getFullYear())
+const editionLabel = computed(() => {
+  const now = new Date()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  return `Vol. ${mm} / ${now.getFullYear()}`
+})
+
+// Coverage matrix
+const coverage = computed(() => [
+  { name: t('home.providers.claude'), hint: t('home.coverage.claudeHint'), state: 'live' },
+  { name: 'GPT', hint: t('home.coverage.gptHint'), state: 'live' },
+  { name: t('home.providers.gemini'), hint: t('home.coverage.geminiHint'), state: 'live' },
+  { name: t('home.providers.antigravity'), hint: t('home.coverage.antigravityHint'), state: 'live' },
+  { name: t('home.providers.more'), hint: t('home.coverage.moreHint'), state: 'soon' },
+])
 
 // Toggle theme
 function toggleTheme() {
@@ -469,11 +254,7 @@ function initTheme() {
 
 onMounted(() => {
   initTheme()
-
-  // Check auth state
   authStore.checkAuth()
-
-  // Ensure public settings are loaded (will use cache if already loaded from injected config)
   if (!appStore.publicSettingsLoaded) {
     appStore.fetchPublicSettings()
   }
@@ -481,164 +262,535 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Terminal Container */
-.terminal-container {
+/* =========================================================================
+   Swiss editorial landing — international typographic style
+   light: #f4f3ee paper / #111 ink / #c1392b accent
+   dark:  #0e0e0d / #f1efe7 / #ff5a3d
+   ========================================================================= */
+.swiss-root {
+  --bg: #f4f3ee;
+  --ink: #111111;
+  --mute: #6b6b6b;
+  --line: rgba(17, 17, 17, 0.18);
+  --accent: #c1392b;
+  --display-font: 'Times New Roman', 'Songti SC', 'STSong', 'Source Han Serif SC', serif;
+  --mono-font: ui-monospace, 'SF Mono', 'Menlo', 'Consolas', monospace;
+  --body-font: system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body-font);
+  min-height: 100vh;
   position: relative;
+  overflow-x: hidden;
+  letter-spacing: 0.005em;
+}
+.swiss-root.is-dark {
+  --bg: #0e0e0d;
+  --ink: #f1efe7;
+  --mute: #8b8b85;
+  --line: rgba(241, 239, 231, 0.18);
+  --accent: #ff5a3d;
+}
+.swiss-root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(to right, var(--line) 1px, transparent 1px);
+  background-size: calc(100% / 12) 100%;
+  opacity: 0.35;
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+.swiss-root.is-dark::before {
+  mix-blend-mode: screen;
+}
+
+/* Header */
+.swiss-top {
+  position: relative;
+  z-index: 2;
+  border-bottom: 1px solid var(--line);
+}
+.swiss-top__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 18px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.swiss-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono-font);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.swiss-mark__dot {
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
   display: inline-block;
 }
-
-/* Terminal Window */
-.terminal-window {
-  width: 420px;
-  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-  border-radius: 14px;
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-  transform: perspective(1000px) rotateX(2deg) rotateY(-2deg);
-  transition: transform 0.3s ease;
+.swiss-mark__logo {
+  height: 20px;
+  width: auto;
+  display: inline-block;
 }
-
-.terminal-window:hover {
-  transform: perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(-4px);
+.swiss-mark__name {
+  color: var(--ink);
+  font-weight: 600;
 }
-
-/* Terminal Header */
-.terminal-header {
+.swiss-actions {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
-  background: rgba(30, 41, 59, 0.8);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  gap: 14px;
 }
-
-.terminal-buttons {
-  display: flex;
+.swiss-meta {
+  font-family: var(--mono-font);
+  font-size: 11px;
+  color: var(--mute);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.swiss-meta--inline {
+  display: inline-block;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+}
+.swiss-meta--mute {
+  color: var(--mute);
+}
+.swiss-link {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.swiss-link:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+.swiss-cta {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--ink);
+  font-family: var(--mono-font);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: transparent;
+  text-decoration: none;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.swiss-cta:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+.swiss-cta__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--mono-font);
+  font-size: 10px;
+  font-weight: 700;
 }
 
-.terminal-buttons span {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
+/* Main */
+.swiss-main {
+  position: relative;
+  z-index: 1;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+.swiss-section {
+  padding: 96px 0;
+  border-bottom: 1px solid var(--line);
+}
+.swiss-section:last-of-type {
+  border-bottom: none;
 }
 
-.btn-close {
-  background: #ef4444;
+/* Rule (section header bar) */
+.swiss-rule {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 56px;
 }
-.btn-minimize {
-  background: #eab308;
+.swiss-rule__num {
+  font-family: var(--mono-font);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.2em;
 }
-.btn-maximize {
-  background: #22c55e;
-}
-
-.terminal-title {
+.swiss-rule__line {
   flex: 1;
-  text-align: center;
-  font-size: 12px;
-  font-family: ui-monospace, monospace;
-  color: #64748b;
-  margin-right: 52px;
+  height: 1px;
+  background: var(--line);
+}
+.swiss-rule__label {
+  font-family: var(--mono-font);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--mute);
 }
 
-/* Terminal Body */
-.terminal-body {
-  padding: 20px 24px;
-  font-family: ui-monospace, 'Fira Code', monospace;
-  font-size: 14px;
-  line-height: 2;
+/* Hero display */
+.swiss-display {
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-style: italic;
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--ink);
 }
-
-.code-line {
+.swiss-display__row {
+  display: flex;
+  align-items: baseline;
+  gap: clamp(24px, 4vw, 64px);
+  flex-wrap: wrap;
+}
+.swiss-display__row--lead {
+  font-size: clamp(72px, 14vw, 200px);
+}
+.swiss-display__row--trail {
+  font-size: clamp(72px, 14vw, 200px);
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+.swiss-display__word--accent {
+  position: relative;
+}
+.swiss-display__word--accent::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.08em;
+  height: 0.08em;
+  background: var(--accent);
+}
+.swiss-display__rule {
+  display: inline-block;
+  width: clamp(60px, 8vw, 140px);
+  height: 1px;
+  background: var(--ink);
+  align-self: center;
+  transform: translateY(-0.18em);
+}
+.swiss-hero__bottom {
+  margin-top: 80px;
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  gap: 64px;
+  align-items: end;
+}
+.swiss-lede {
+  font-family: var(--display-font);
+  font-size: clamp(20px, 1.6vw, 24px);
+  line-height: 1.45;
+  color: var(--ink);
+  margin: 0;
+  max-width: 520px;
+}
+.swiss-hero__cta {
   display: flex;
   align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
+  justify-self: end;
+}
+.swiss-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 22px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono-font);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+.swiss-button:hover {
+  background: var(--ink);
+  color: var(--bg);
+  transform: translate(2px);
+}
+.swiss-button--solid {
+  background: var(--ink);
+  color: var(--bg);
+}
+.swiss-button--solid:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.swiss-button__index {
+  font-size: 14px;
+}
+
+/* Pillars */
+.swiss-pillars__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+.swiss-pillar {
+  padding: 40px 32px 40px 0;
+  border-right: 1px solid var(--line);
+  position: relative;
+}
+.swiss-pillar:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+.swiss-pillar:not(:first-child) {
+  padding-left: 32px;
+}
+.swiss-pillar__index {
+  font-family: var(--mono-font);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.2em;
+  margin-bottom: 28px;
+}
+.swiss-pillar__title {
+  font-family: var(--display-font);
+  font-weight: 500;
+  font-size: clamp(28px, 2.6vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  margin: 0 0 16px;
+  color: var(--ink);
+}
+.swiss-pillar__body {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--mute);
+  margin: 0;
+  max-width: 36ch;
+}
+
+/* Coverage */
+.swiss-coverage__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.swiss-coverage__row {
+  display: grid;
+  grid-template-columns: 60px 1.2fr auto 2fr 90px;
+  align-items: center;
+  gap: 24px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--line);
+  transition: padding-left 0.2s ease;
+}
+.swiss-coverage__row:hover {
+  padding-left: 12px;
+}
+.swiss-coverage__num {
+  font-family: var(--mono-font);
+  font-size: 11px;
+  color: var(--mute);
+  letter-spacing: 0.2em;
+}
+.swiss-coverage__name {
+  font-family: var(--display-font);
+  font-size: clamp(22px, 2vw, 30px);
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.swiss-coverage__rule {
+  width: 36px;
+  height: 1px;
+  background: var(--line);
+}
+.swiss-coverage__hint {
+  font-size: 13px;
+  color: var(--mute);
+  font-family: var(--mono-font);
+  letter-spacing: 0.04em;
+}
+.swiss-coverage__status {
+  font-family: var(--mono-font);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: right;
+}
+.swiss-coverage__status[data-state='live'] {
+  color: var(--accent);
+}
+.swiss-coverage__status[data-state='soon'] {
+  color: var(--mute);
+}
+
+/* Close */
+.swiss-close__pull {
+  font-family: var(--display-font);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(34px, 4vw, 64px);
+  line-height: 1.18;
+  letter-spacing: -0.015em;
+  margin: 0;
+  max-width: 22ch;
+  color: var(--ink);
+}
+.swiss-close__cta {
+  margin-top: 56px;
+}
+
+/* Footer */
+.swiss-foot {
+  position: relative;
+  z-index: 2;
+  border-top: 1px solid var(--line);
+}
+.swiss-foot__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 32px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+}
+.swiss-foot__link {
+  margin-left: auto;
+  font-family: var(--mono-font);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--mute);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.18s ease, border-color 0.18s ease;
+}
+.swiss-foot__link:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+/* Reveal animation */
+.swiss-section {
   opacity: 0;
-  animation: line-appear 0.5s ease forwards;
+  transform: translateY(12px);
+  animation: swiss-reveal 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
 }
-
-.line-1 {
-  animation-delay: 0.3s;
+.swiss-hero {
+  animation-delay: 0.05s;
 }
-.line-2 {
-  animation-delay: 1s;
+.swiss-pillars {
+  animation-delay: 0.15s;
 }
-.line-3 {
-  animation-delay: 1.8s;
+.swiss-coverage {
+  animation-delay: 0.25s;
 }
-.line-4 {
-  animation-delay: 2.5s;
+.swiss-close {
+  animation-delay: 0.35s;
 }
-
-@keyframes line-appear {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
+@keyframes swiss-reveal {
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-.code-prompt {
-  color: #22c55e;
-  font-weight: bold;
-}
-.code-cmd {
-  color: #38bdf8;
-}
-.code-flag {
-  color: #a78bfa;
-}
-.code-url {
-  color: #14b8a6;
-}
-.code-comment {
-  color: #64748b;
-  font-style: italic;
-}
-.code-success {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.15);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 600;
-}
-.code-response {
-  color: #fbbf24;
-}
-
-/* Blinking Cursor */
-.cursor {
-  display: inline-block;
-  width: 8px;
-  height: 16px;
-  background: #22c55e;
-  animation: blink 1s step-end infinite;
-}
-
-@keyframes blink {
-  0%,
-  50% {
-    opacity: 1;
+@media (max-width: 960px) {
+  .swiss-main {
+    padding: 0 24px;
   }
-  51%,
-  100% {
-    opacity: 0;
+  .swiss-top__inner {
+    padding: 16px 24px;
+  }
+  .swiss-foot__inner {
+    padding: 24px;
+  }
+  .swiss-section {
+    padding: 64px 0;
+  }
+  .swiss-rule {
+    margin-bottom: 36px;
+  }
+  .swiss-hero__bottom {
+    grid-template-columns: 1fr;
+    gap: 36px;
+    margin-top: 56px;
+  }
+  .swiss-hero__cta {
+    justify-self: start;
+  }
+  .swiss-pillars__grid {
+    grid-template-columns: 1fr;
+  }
+  .swiss-pillar {
+    padding: 32px 0;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .swiss-pillar:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .swiss-pillar:not(:first-child) {
+    padding-left: 0;
+  }
+  .swiss-coverage__row {
+    grid-template-columns: 40px 1fr 70px;
+    gap: 16px;
+  }
+  .swiss-coverage__rule,
+  .swiss-coverage__hint {
+    display: none;
   }
 }
-
-/* Dark mode adjustments */
-:deep(.dark) .terminal-window {
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(20, 184, 166, 0.2),
-    0 0 40px rgba(20, 184, 166, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+@media (max-width: 540px) {
+  .swiss-actions {
+    gap: 8px;
+  }
+  .swiss-meta {
+    font-size: 10px;
+  }
+  .swiss-display__row {
+    gap: 18px;
+  }
+  .swiss-display__rule {
+    width: 36px;
+  }
+  .swiss-cta {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
 }
 </style>

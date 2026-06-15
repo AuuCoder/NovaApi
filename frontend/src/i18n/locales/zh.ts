@@ -107,6 +107,22 @@ export default {
     },
     footer: {
       allRightsReserved: '保留所有权利。'
+    },
+    // 杂志风编号章节标题
+    sections: {
+      index: '索引 / 入口',
+      rules: '三条准则',
+      coverage: '已覆盖矩阵',
+      start: '现在开始'
+    },
+    startHint: '注册后立刻可用，无需等待。',
+    closePull: '把多个订阅的复杂，收敛成一条统一的接口。',
+    coverage: {
+      claudeHint: 'Anthropic 全系列对话与编排',
+      gptHint: 'GPT-5 系列与 Codex 工具链',
+      geminiHint: 'Gemini 2.5 / 3 / 3.1 全栈',
+      antigravityHint: 'Google Antigravity Agent',
+      moreHint: '持续接入新厂商'
     }
   },
 
