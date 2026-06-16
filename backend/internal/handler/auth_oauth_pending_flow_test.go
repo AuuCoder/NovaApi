@@ -63,7 +63,7 @@ func TestApplySuggestedProfileToCompletionResponseKeepsExistingPayloadValues(t *
 	require.Equal(t, true, payload["adoption_required"])
 }
 
-func TestSetOAuthPendingSessionCookieUsesProviderCompletionPathPrefix(t *testing.T) {
+func TestSetOAuthPendingSessionCookieUsesRootPath(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback", nil)
@@ -72,7 +72,7 @@ func TestSetOAuthPendingSessionCookieUsesProviderCompletionPathPrefix(t *testing
 
 	cookie := findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName)
 	require.NotNil(t, cookie)
-	require.Equal(t, "/api/v1/auth/oauth", cookie.Path)
+	require.Equal(t, "/", cookie.Path)
 }
 
 func TestExchangePendingOAuthCompletionPreviewThenFinalizeAppliesAdoptionDecision(t *testing.T) {

@@ -28,9 +28,9 @@ import (
 )
 
 const (
-	oauthPendingBrowserCookiePath = "/api/v1/auth/oauth"
+	oauthPendingBrowserCookiePath = "/"
 	oauthPendingBrowserCookieName = "oauth_pending_browser_session"
-	oauthPendingSessionCookiePath = "/api/v1/auth/oauth"
+	oauthPendingSessionCookiePath = "/"
 	oauthPendingSessionCookieName = "oauth_pending_session"
 	oauthPendingCookieMaxAgeSec   = 10 * 60
 	oauthPendingChoiceStep        = "choose_account_action_required"
