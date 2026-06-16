@@ -1494,6 +1494,26 @@
                 </div>
                 <Toggle v-model="form.invitation_code_enabled" />
               </div>
+              <!-- Invitation Code Buy URL - Only show when invitation code is enabled -->
+              <div
+                v-if="form.invitation_code_enabled"
+                class="border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.registration.invitationCodeBuyUrl") }}
+                </label>
+                <input
+                  v-model="form.invitation_code_buy_url"
+                  type="url"
+                  class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-600 dark:bg-dark-900 dark:text-white"
+                  :placeholder="t('admin.settings.registration.invitationCodeBuyUrlPlaceholder')"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.registration.invitationCodeBuyUrlHint") }}
+                </p>
+              </div>
               <!-- Password Reset - Only show when email verification is enabled -->
               <div
                 v-if="form.email_verify_enabled"
@@ -7017,6 +7037,7 @@ const form = reactive<SettingsForm>({
   registration_email_suffix_whitelist: [],
   promo_code_enabled: true,
   invitation_code_enabled: false,
+  invitation_code_buy_url: '',
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
@@ -8162,6 +8183,7 @@ async function saveSettings() {
         ),
       promo_code_enabled: form.promo_code_enabled,
       invitation_code_enabled: form.invitation_code_enabled,
+      invitation_code_buy_url: form.invitation_code_buy_url,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
       login_agreement_enabled: form.login_agreement_enabled,

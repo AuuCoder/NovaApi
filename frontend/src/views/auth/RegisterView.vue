@@ -57,7 +57,18 @@
 
       <!-- Invitation Code Input (Required when enabled) -->
       <label v-if="invitationCodeEnabled" class="auth-field" for="invitation_code">
-        <span class="auth-field__label">{{ t('auth.invitationCodeLabel') }}</span>
+        <span class="auth-field__label">
+          {{ t('auth.invitationCodeLabel') }}
+          <a
+            v-if="invitationCodeBuyUrl"
+            :href="invitationCodeBuyUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="auth-field__action"
+          >
+            {{ t('auth.invitationCodeBuy') }}
+          </a>
+        </span>
         <span
           class="auth-field__wrap"
           :class="{
@@ -283,6 +294,7 @@ const registrationEnabled = ref<boolean>(true)
 const emailVerifyEnabled = ref<boolean>(false)
 const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
+const invitationCodeBuyUrl = ref<string>('')
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const siteName = ref<string>('NovaAPI')
@@ -391,6 +403,7 @@ onMounted(async () => {
     emailVerifyEnabled.value = settings.email_verify_enabled
     promoCodeEnabled.value = settings.promo_code_enabled
     invitationCodeEnabled.value = settings.invitation_code_enabled
+    invitationCodeBuyUrl.value = settings.invitation_code_buy_url || ''
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     siteName.value = settings.site_name || 'NovaAPI'

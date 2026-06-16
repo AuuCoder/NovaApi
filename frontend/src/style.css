@@ -1004,6 +1004,17 @@
   text-transform: none;
   letter-spacing: 0;
 }
+.auth-field__action {
+  float: right;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  color: var(--ed-accent, #6366f1);
+  text-decoration: none;
+}
+.auth-field__action:hover {
+  text-decoration: underline;
+}
 .auth-field__wrap {
   display: flex;
   align-items: center;
