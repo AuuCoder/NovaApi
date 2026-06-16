@@ -1209,6 +1209,9 @@
 /* OAuth section spacing inside the panel */
 .auth-editorial__oauth {
   margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {
