@@ -29,7 +29,10 @@ RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
-RUN pnpm run build
+# Docs referenced by frontend via ../../../../docs/... raw imports — keep the
+# same on-host layout (/app/docs alongside /app/frontend).
+COPY docs/ /app/docs/
+RUN NODE_OPTIONS=--max-old-space-size=3072 pnpm run build
 
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder

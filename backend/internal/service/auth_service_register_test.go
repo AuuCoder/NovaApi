@@ -843,3 +843,64 @@ func TestCanBypassRegistrationDisabledForOAuth(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthService_RegisterOAuthSyntheticEmailAccount_SucceedsWithoutInvitationWhenDisabled(t *testing.T) {
+	repo := &userRepoStub{nextID: 71}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "false",
+	}, nil, nil)
+	service.refreshTokenCache = &refreshTokenCacheStub{}
+
+	tokenPair, user, err := service.RegisterOAuthSyntheticEmailAccount(
+		context.Background(),
+		"linuxdo-369535@linuxdo-connect.invalid",
+		"hunter2pw",
+		"",
+		"linuxdo",
+	)
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.Equal(t, "linuxdo-369535@linuxdo-connect.invalid", user.Email)
+	require.Len(t, repo.created, 1)
+}
+
+func TestAuthService_RegisterOAuthSyntheticEmailAccount_RequiresInvitationWhenEnabled(t *testing.T) {
+	repo := &userRepoStub{nextID: 72}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+	}, nil, nil)
+	service.refreshTokenCache = &refreshTokenCacheStub{}
+	service.redeemRepo = &redeemRepoStub{}
+
+	_, _, err := service.RegisterOAuthSyntheticEmailAccount(
+		context.Background(),
+		"linuxdo-369535@linuxdo-connect.invalid",
+		"hunter2pw",
+		"",
+		"linuxdo",
+	)
+	require.ErrorIs(t, err, ErrInvitationCodeRequired)
+	require.Empty(t, repo.created)
+}
+
+func TestAuthService_RegisterOAuthSyntheticEmailAccount_RejectsNonSyntheticEmail(t *testing.T) {
+	repo := &userRepoStub{nextID: 73}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "false",
+	}, nil, nil)
+	service.refreshTokenCache = &refreshTokenCacheStub{}
+
+	_, _, err := service.RegisterOAuthSyntheticEmailAccount(
+		context.Background(),
+		"real-user@gmail.com",
+		"hunter2pw",
+		"",
+		"linuxdo",
+	)
+	require.ErrorIs(t, err, ErrEmailReserved)
+	require.Empty(t, repo.created)
+}

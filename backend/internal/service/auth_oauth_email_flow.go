@@ -175,6 +175,88 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	return tokenPair, user, nil
 }
 
+// IsSyntheticProviderEmail reports whether email is one of the provider
+// synthetic (non-deliverable) addresses minted from a stable OAuth subject.
+// Such addresses are trusted only when sourced from a server-side pending
+// OAuth session, never from user form input.
+func IsSyntheticProviderEmail(email string) bool {
+	return isReservedEmail(email)
+}
+
+// RegisterOAuthSyntheticEmailAccount creates a local account for an OAuth
+// provider that does not expose a deliverable email (e.g. LinuxDo privacy
+// relay). The synthetic email is derived server-side from the provider subject
+// and carried in the pending OAuth session, so it is trusted here and the
+// reserved-email / email-policy / verify-code gates are intentionally skipped.
+// Invitation-code enforcement is preserved.
+func (s *AuthService) RegisterOAuthSyntheticEmailAccount(
+	ctx context.Context,
+	syntheticEmail string,
+	password string,
+	invitationCode string,
+	signupSource string,
+) (*TokenPair, *User, error) {
+	if s == nil {
+		return nil, nil, ErrServiceUnavailable
+	}
+	if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
+		return nil, nil, ErrRegDisabled
+	}
+
+	email := strings.TrimSpace(strings.ToLower(syntheticEmail))
+	if !isReservedEmail(email) {
+		// Caller misuse: this path is only for trusted synthetic addresses.
+		return nil, nil, ErrEmailReserved
+	}
+
+	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+		slog.Error("oauth synthetic register: invitation failed", "email", email, "error", err.Error())
+		return nil, nil, err
+	}
+
+	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
+	if err != nil {
+		slog.Error("oauth synthetic register: ExistsByEmail failed", "email", email, "error", err.Error())
+		return nil, nil, ErrServiceUnavailable
+	}
+	if existsEmail {
+		return nil, nil, ErrEmailExists
+	}
+
+	hashedPassword, err := s.HashPassword(password)
+	if err != nil {
+		return nil, nil, fmt.Errorf("hash password: %w", err)
+	}
+
+	signupSource = normalizeOAuthSignupSource(signupSource)
+	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
+
+	user := &User{
+		Email:        email,
+		PasswordHash: hashedPassword,
+		Role:         RoleUser,
+		Balance:      grantPlan.Balance,
+		Concurrency:  grantPlan.Concurrency,
+		Status:       StatusActive,
+		SignupSource: signupSource,
+	}
+
+	if err := s.userRepo.Create(ctx, user); err != nil {
+		if errors.Is(err, ErrEmailExists) {
+			return nil, nil, ErrEmailExists
+		}
+		slog.Error("oauth synthetic register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
+		return nil, nil, ErrServiceUnavailable
+	}
+
+	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
+	if err != nil {
+		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
+		return nil, nil, fmt.Errorf("generate token pair: %w", err)
+	}
+	return tokenPair, user, nil
+}
+
 // RegisterVerifiedOAuthEmailAccount creates a local account from an OAuth
 // provider that has already returned a verified email address.
 func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
