@@ -191,8 +191,8 @@ export default {
 
   // Setup Wizard
   setup: {
-    title: 'Sub2API Setup',
-    description: 'Configure your Sub2API instance',
+    title: 'NovaAPI Setup',
+    description: 'Configure your NovaAPI instance',
     database: {
       title: 'Database Configuration',
       description: 'Connect to your PostgreSQL database',
