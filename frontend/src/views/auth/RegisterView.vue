@@ -91,6 +91,15 @@
         <div v-if="invitationCodeEnabled">
           <label for="invitation_code" class="input-label">
             {{ t('auth.invitationCodeLabel') }}
+            <a
+              v-if="invitationCodeBuyUrl"
+              :href="invitationCodeBuyUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="ml-2 text-sm font-normal text-primary-600 hover:text-primary-500 dark:text-primary-400"
+            >
+              {{ t('auth.invitationCodeBuy') }}
+            </a>
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
@@ -351,6 +360,7 @@ const registrationEnabled = ref<boolean>(true)
 const emailVerifyEnabled = ref<boolean>(false)
 const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
+const invitationCodeBuyUrl = ref<string>('')
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const siteName = ref<string>('Sub2API')
@@ -459,6 +469,7 @@ onMounted(async () => {
     emailVerifyEnabled.value = settings.email_verify_enabled
     promoCodeEnabled.value = settings.promo_code_enabled
     invitationCodeEnabled.value = settings.invitation_code_enabled
+    invitationCodeBuyUrl.value = settings.invitation_code_buy_url || ''
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     siteName.value = settings.site_name || 'Sub2API'
