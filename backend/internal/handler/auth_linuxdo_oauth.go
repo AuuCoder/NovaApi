@@ -30,8 +30,8 @@ import (
 )
 
 const (
-	linuxDoOAuthCookiePath         = "/api/v1/auth/oauth/linuxdo"
-	oauthBindAccessTokenCookiePath = "/api/v1/auth/oauth"
+	linuxDoOAuthCookiePath         = "/"
+	oauthBindAccessTokenCookiePath = "/"
 	linuxDoOAuthStateCookieName    = "linuxdo_oauth_state"
 	linuxDoOAuthVerifierCookie     = "linuxdo_oauth_verifier"
 	linuxDoOAuthRedirectCookie     = "linuxdo_oauth_redirect"

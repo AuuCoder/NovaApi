@@ -28,9 +28,9 @@ import (
 )
 
 const (
-	oauthPendingBrowserCookiePath = "/api/v1/auth/oauth"
+	oauthPendingBrowserCookiePath = "/"
 	oauthPendingBrowserCookieName = "oauth_pending_browser_session"
-	oauthPendingSessionCookiePath = "/api/v1/auth/oauth"
+	oauthPendingSessionCookiePath = "/"
 	oauthPendingSessionCookieName = "oauth_pending_session"
 	oauthPromoCodeCookieName      = "oauth_promo_code"
 	oauthPendingCookieMaxAgeSec   = 10 * 60
@@ -1728,6 +1728,15 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	}
 
 	email := strings.TrimSpace(strings.ToLower(req.Email))
+	// Providers that do not expose a deliverable email (e.g. LinuxDo privacy
+	// relay) carry a server-minted synthetic address in the pending session.
+	// Trust that address and ignore whatever the form posted, so the user only
+	// needs to supply password + invitation code.
+	sessionSyntheticEmail := strings.TrimSpace(strings.ToLower(session.ResolvedEmail))
+	useSyntheticEmail := service.IsSyntheticProviderEmail(sessionSyntheticEmail)
+	if useSyntheticEmail {
+		email = sessionSyntheticEmail
+	}
 	existingUser, err := findUserByNormalizedEmail(c.Request.Context(), client, email)
 	if err != nil {
 		switch {
@@ -1755,14 +1764,26 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		return
 	}
 
-	tokenPair, user, err := h.authService.RegisterOAuthEmailAccount(
-		c.Request.Context(),
-		email,
-		req.Password,
-		strings.TrimSpace(req.VerifyCode),
-		strings.TrimSpace(req.InvitationCode),
-		strings.TrimSpace(session.ProviderType),
-	)
+	var tokenPair *service.TokenPair
+	var user *service.User
+	if useSyntheticEmail {
+		tokenPair, user, err = h.authService.RegisterOAuthSyntheticEmailAccount(
+			c.Request.Context(),
+			email,
+			req.Password,
+			strings.TrimSpace(req.InvitationCode),
+			strings.TrimSpace(session.ProviderType),
+		)
+	} else {
+		tokenPair, user, err = h.authService.RegisterOAuthEmailAccount(
+			c.Request.Context(),
+			email,
+			req.Password,
+			strings.TrimSpace(req.VerifyCode),
+			strings.TrimSpace(req.InvitationCode),
+			strings.TrimSpace(session.ProviderType),
+		)
+	}
 	if err != nil {
 		if errors.Is(err, service.ErrEmailExists) {
 			existingUser, lookupErr := findUserByNormalizedEmail(c.Request.Context(), client, email)
