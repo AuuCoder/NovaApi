@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -61,7 +60,7 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 
 	require.Equal(t, "https://api.x.ai/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer grok-access-token", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, xai.GrokCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	requireGrokCLIHeaders(t, upstream.lastReq.Header)
 	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.NotContains(t, rec.Body.String(), "claude")
 	require.Contains(t, rec.Body.String(), `"model":"grok-4.3"`)

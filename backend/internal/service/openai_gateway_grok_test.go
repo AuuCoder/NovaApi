@@ -41,6 +41,14 @@ func TestPatchGrokResponsesBodySetsMappedModelAndDropsUnsupportedFields(t *testi
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning.effort").String())
 }
 
+func requireGrokCLIHeaders(t *testing.T, header http.Header) {
+	t.Helper()
+	require.Equal(t, "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)", header.Get("User-Agent"))
+	require.Equal(t, "xai-grok-cli", header.Get("X-XAI-Token-Auth"))
+	require.Equal(t, "grok-pager", header.Get("x-grok-client-identifier"))
+	require.Equal(t, "0.2.93", header.Get("x-grok-client-version"))
+}
+
 func TestPatchGrokResponsesBodyDropsGrok45ReasoningUnsupportedFields(t *testing.T) {
 	t.Parallel()
 
@@ -168,7 +176,7 @@ func TestBuildGrokResponsesRequestUsesAccountBaseURLAndBearerToken(t *testing.T)
 	require.Equal(t, "Bearer access-token", req.Header.Get("Authorization"))
 	require.Equal(t, "application/json", req.Header.Get("Content-Type"))
 	require.Contains(t, req.Header.Get("Accept"), "text/event-stream")
-	require.Equal(t, "grok-cli/0.1.202", req.Header.Get("User-Agent"))
+	requireGrokCLIHeaders(t, req.Header)
 
 	data, err := io.ReadAll(req.Body)
 	require.NoError(t, err)
@@ -314,7 +322,7 @@ func TestForwardGrokMediaImagesGenerationNormalizesImagineAlias(t *testing.T) {
 	require.Equal(t, http.MethodPost, upstream.lastReq.Method)
 	require.Equal(t, "Bearer api-key", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
-	require.Equal(t, xai.GrokCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	requireGrokCLIHeaders(t, upstream.lastReq.Header)
 	require.JSONEq(t, `{"model":"grok-imagine-image-quality","prompt":"draw a cat"}`, string(upstream.lastBody))
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.JSONEq(t, `{"data":[]}`, recorder.Body.String())
@@ -778,7 +786,7 @@ func TestForwardAsChatCompletionsForGrokStreamingUsesRawXAIChatCompletions(t *te
 	require.Equal(t, xai.DefaultCLIBaseURL+"/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
-	require.Equal(t, xai.GrokCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	requireGrokCLIHeaders(t, upstream.lastReq.Header)
 	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
 	require.True(t, result.Stream)
@@ -895,7 +903,7 @@ func TestForwardAsAnthropicForGrokUsesXAIResponses(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, xai.GrokCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	requireGrokCLIHeaders(t, upstream.lastReq.Header)
 	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.NotContains(t, string(upstream.lastBody), "chatgpt.com")

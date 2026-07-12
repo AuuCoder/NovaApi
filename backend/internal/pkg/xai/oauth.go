@@ -23,7 +23,6 @@ const (
 	DefaultTokenURL     = OAuthIssuer + "/oauth2/token"
 	DefaultBaseURL      = "https://api.x.ai/v1"
 	DefaultCLIBaseURL   = "https://cli-chat-proxy.grok.com/v1"
-	GrokCLIUserAgent    = "grok-cli/0.1.202"
 	DefaultClientID     = "b1a00492-073a-47ea-816f-4c329264a828"
 	DefaultScope        = "openid profile email offline_access grok-cli:access api:access"
 	DefaultRedirectURI  = "http://127.0.0.1:56121/callback"

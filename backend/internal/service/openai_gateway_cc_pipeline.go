@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -149,7 +150,7 @@ func (s *OpenAIGatewayService) resolveCCFallbackTarget(account *Account) (apiKey
 // 账号级 header 覆写，最后经代理发出。传输层失败（DNS/TCP/TLS，无 HTTP 响应）
 // 统一由 handleOpenAIUpstreamTransportError 归一为 failover。
 //
-// userAgent 为空时保留默认 UA；Grok 的默认 UA 兜底由调用方解析后传入。
+// userAgent 为空时保留默认 UA；Grok 的 CLI 身份头在账号覆写后强制应用。
 func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	ctx context.Context,
 	c *gin.Context,
@@ -190,6 +191,9 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效）
 	account.ApplyHeaderOverrides(upstreamReq.Header)
+	if account.Platform == PlatformGrok {
+		xai.SetGrokCLIHeaders(upstreamReq.Header)
+	}
 
 	proxyURL := ""
 	if account.Proxy != nil {
