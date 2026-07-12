@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 const grokTokenRefreshSkew = time.Hour
@@ -49,7 +51,8 @@ func (r *GrokTokenRefresher) Refresh(ctx context.Context, account *Account) (map
 	}
 	newCredentials := r.grokOAuthService.BuildAccountCredentials(tokenInfo)
 	newCredentials = MergeCredentials(account.Credentials, newCredentials)
-	if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
+	if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" &&
+		!strings.EqualFold(strings.TrimRight(baseURL, "/"), xai.DefaultBaseURL) {
 		newCredentials["base_url"] = baseURL
 	}
 	return newCredentials, nil

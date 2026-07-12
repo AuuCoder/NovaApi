@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -58,7 +59,7 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 	err := svc.TestAccountConnection(c, account.ID, "grok", "", AccountTestModeDefault)
 	require.NoError(t, err)
 
-	require.Equal(t, "https://api.x.ai/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer grok-access-token", upstream.lastReq.Header.Get("Authorization"))
 	requireGrokCLIHeaders(t, upstream.lastReq.Header)
 	require.Equal(t, "grok-4.3", gjson.GetBytes(upstream.lastBody, "model").String())

@@ -4,6 +4,9 @@ package service
 
 import (
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetBaseURL(t *testing.T) {
@@ -155,6 +158,55 @@ func TestGetGeminiBaseURL(t *testing.T) {
 			if result != tt.expected {
 				t.Errorf("GetGeminiBaseURL() = %q, want %q", result, tt.expected)
 			}
+		})
+	}
+}
+
+func TestGetGrokBaseURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  Account
+		expected string
+	}{
+		{
+			name: "oauth without base url uses cli proxy",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+			},
+			expected: xai.DefaultCLIBaseURL,
+		},
+		{
+			name: "oauth legacy api base url migrates to cli proxy",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGrok,
+				Credentials: map[string]any{"base_url": xai.DefaultBaseURL + "/"},
+			},
+			expected: xai.DefaultCLIBaseURL,
+		},
+		{
+			name: "oauth custom base url is preserved",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformGrok,
+				Credentials: map[string]any{"base_url": "https://custom.example.com/v1"},
+			},
+			expected: "https://custom.example.com/v1",
+		},
+		{
+			name: "api key without base url uses xai api",
+			account: Account{
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformGrok,
+			},
+			expected: xai.DefaultBaseURL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.account.GetGrokBaseURL())
 		})
 	}
 }

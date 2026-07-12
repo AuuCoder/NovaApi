@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
@@ -39,6 +40,18 @@ func TestGrokOAuthServiceRefreshTokenPreservesOriginalRefreshTokenWhenNotRotated
 	require.Equal(t, "new-access-token", info.AccessToken)
 	require.Equal(t, "original-refresh-token", info.RefreshToken)
 	require.Equal(t, "client-id", info.ClientID)
+}
+
+func TestGrokOAuthServiceBuildAccountCredentialsUsesCLIProxy(t *testing.T) {
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{})
+	defer svc.Stop()
+
+	credentials := svc.BuildAccountCredentials(&GrokTokenInfo{
+		AccessToken: "access-token",
+		ExpiresAt:   time.Now().Add(time.Hour).Unix(),
+	})
+
+	require.Equal(t, xai.DefaultCLIBaseURL, credentials["base_url"])
 }
 
 func TestGrokOAuthServiceExchangeCodeRequiresStateForCallbackURLAndConsumesSession(t *testing.T) {
