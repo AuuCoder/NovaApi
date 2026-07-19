@@ -360,6 +360,14 @@ func TestRunCheckForModel_OpenAIImagePreservesErrorBody(t *testing.T) {
 	}
 }
 
+func TestFinalizeOperationalOrDegradedAt_UsesImageThreshold(t *testing.T) {
+	res := &CheckResult{Status: MonitorStatusError}
+	got := finalizeOperationalOrDegradedAt(res, 15*time.Second, 15000, monitorImageDegradedThreshold)
+	if got.Status != MonitorStatusOperational {
+		t.Fatalf("15s image response should remain operational, got status=%s message=%q", got.Status, got.Message)
+	}
+}
+
 func TestRunCheckForModel_OpenAIResponsesReplaceMissingInstructionsFailsLocally(t *testing.T) {
 	h := &openAICaptureHandler{}
 	endpoint := setupFakeOpenAI(t, h)

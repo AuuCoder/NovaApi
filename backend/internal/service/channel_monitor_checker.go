@@ -91,7 +91,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 			res.Message = truncateMessage("image response: upstream returned 2xx without image data")
 			return res
 		}
-		return finalizeOperationalOrDegraded(res, latency, latencyMs)
+		return finalizeOperationalOrDegradedAt(res, latency, latencyMs, monitorImageDegradedThreshold)
 	}
 
 	// Replace 模式：跳过 challenge 校验（用户 body 是静态的，challenge 没法嵌入）。
@@ -118,7 +118,11 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 // finalizeOperationalOrDegraded 负责走到最后一步的 operational/degraded 判定。
 // 拆出来是为了让 runCheckForModel 不超过 30 行。
 func finalizeOperationalOrDegraded(res *CheckResult, latency time.Duration, latencyMs int) *CheckResult {
-	if latency >= monitorDegradedThreshold {
+	return finalizeOperationalOrDegradedAt(res, latency, latencyMs, monitorDegradedThreshold)
+}
+
+func finalizeOperationalOrDegradedAt(res *CheckResult, latency time.Duration, latencyMs int, threshold time.Duration) *CheckResult {
+	if latency >= threshold {
 		res.Status = MonitorStatusDegraded
 		res.Message = truncateMessage(fmt.Sprintf("slow response: %dms", latencyMs))
 		return res

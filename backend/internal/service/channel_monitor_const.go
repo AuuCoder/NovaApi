@@ -15,6 +15,8 @@ const (
 	monitorPingTimeout = 8 * time.Second
 	// monitorDegradedThreshold 主请求成功但耗时超过该阈值视为 degraded。
 	monitorDegradedThreshold = 6 * time.Second
+	// monitorImageDegradedThreshold 图片生成天然比文本慢，单独使用更宽松的降级阈值。
+	monitorImageDegradedThreshold = 30 * time.Second
 	// monitorHistoryRetentionDays 明细历史保留天数。
 	// 60s 默认间隔 * 30 天 ≈ 43200 行/monitor/model，一般部署总量 <= 2M 行，
 	// PG 无压力；所以直接保留完整明细一个月，可用率查询可以全走原始行不依赖聚合。
