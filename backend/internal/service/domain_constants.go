@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
@@ -43,6 +44,16 @@ const (
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformGrok        = domain.PlatformGrok
 )
+
+// normalizePlatformIdentifier keeps legacy clients compatible with the
+// canonical platform identifiers used by schedulers and upstream handlers.
+func normalizePlatformIdentifier(platform string) string {
+	normalized := strings.ToLower(strings.TrimSpace(platform))
+	if normalized == "xai" {
+		return PlatformGrok
+	}
+	return normalized
+}
 
 // AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
 // ent/schema/user_platform_quota.go 的 Validate 函数独立维护（构建期约束），

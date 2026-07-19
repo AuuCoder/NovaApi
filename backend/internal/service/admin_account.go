@@ -69,12 +69,14 @@ func normalizeAccountConcurrency(platform, accountType string, concurrency int) 
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	platform := normalizePlatformIdentifier(input.Platform)
+
 	// 绑定分组
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组
 	if len(groupIDs) == 0 && !input.SkipDefaultGroupBind {
-		defaultGroupName := input.Platform + "-default"
-		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
+		defaultGroupName := platform + "-default"
+		groups, err := s.groupRepo.ListActiveByPlatform(ctx, platform)
 		if err == nil {
 			for _, g := range groups {
 				if g.Name == defaultGroupName {
@@ -87,7 +89,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 
 	// 检查混合渠道风险（除非用户已确认）
 	if len(groupIDs) > 0 && !input.SkipMixedChannelCheck {
-		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {
+		if err := s.checkMixedChannelRisk(ctx, 0, platform, groupIDs); err != nil {
 			return nil, err
 		}
 	}
@@ -100,12 +102,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
-		Platform:    input.Platform,
+		Platform:    platform,
 		Type:        input.Type,
 		Credentials: input.Credentials,
 		Extra:       input.Extra,
 		ProxyID:     input.ProxyID,
-		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
+		Concurrency: normalizeAccountConcurrency(platform, input.Type, input.Concurrency),
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,

@@ -4,6 +4,20 @@ package service
 
 import "testing"
 
+func TestNormalizePlatformIdentifierMapsLegacyXAIToGrok(t *testing.T) {
+	for _, input := range []string{"xai", " XAI ", "Xai"} {
+		if got := normalizePlatformIdentifier(input); got != PlatformGrok {
+			t.Errorf("normalizePlatformIdentifier(%q) = %q, want %q", input, got, PlatformGrok)
+		}
+	}
+}
+
+func TestNormalizePlatformIdentifierNormalizesCanonicalPlatforms(t *testing.T) {
+	if got := normalizePlatformIdentifier(" OpenAI "); got != PlatformOpenAI {
+		t.Errorf("normalizePlatformIdentifier() = %q, want %q", got, PlatformOpenAI)
+	}
+}
+
 // TestSettingKeyDefaultPlatformQuotas 验证新的系统层 JSON key 常量值正确。
 func TestSettingKeyDefaultPlatformQuotas(t *testing.T) {
 	if SettingKeyDefaultPlatformQuotas != "default_platform_quotas" {

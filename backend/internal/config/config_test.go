@@ -201,6 +201,23 @@ func TestLoadOpenAICompactModelFromEnv(t *testing.T) {
 	require.Equal(t, "gpt-5.3-codex", cfg.Gateway.OpenAICompactModel)
 }
 
+func TestLoadGrokWebImageConfigFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_GROK_WEB_BRIDGE_URL", "http://grok-web-bridge:8090/generate")
+	t.Setenv("GATEWAY_GROK_WEB_BRIDGE_KEY", "bridge-secret")
+	t.Setenv("GATEWAY_GROK_WEB_DEFAULT_PROXY_URL", "http://grok-privoxy:8118")
+	t.Setenv("GATEWAY_GROK_IMAGE_CACHE_DIR", "/app/data/grok-images")
+	t.Setenv("GATEWAY_GROK_IMAGE_RETENTION_HOURS", "48")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "http://grok-web-bridge:8090/generate", cfg.Gateway.GrokWebBridgeURL)
+	require.Equal(t, "bridge-secret", cfg.Gateway.GrokWebBridgeKey)
+	require.Equal(t, "http://grok-privoxy:8118", cfg.Gateway.GrokWebDefaultProxyURL)
+	require.Equal(t, "/app/data/grok-images", cfg.Gateway.GrokImageCacheDir)
+	require.Equal(t, 48, cfg.Gateway.GrokImageRetentionHours)
+}
+
 func TestLoadDefaultOpenAIHTTP2Enabled(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

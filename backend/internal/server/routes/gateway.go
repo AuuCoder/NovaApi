@@ -22,6 +22,8 @@ func RegisterGatewayRoutes(
 	settingService *service.SettingService,
 	cfg *config.Config,
 ) {
+	registerGrokImageFileRoute(r, cfg)
+
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
@@ -284,6 +286,22 @@ func RegisterGatewayRoutes(
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 	}
 
+}
+
+func registerGrokImageFileRoute(r *gin.Engine, cfg *config.Config) {
+	if r == nil || cfg == nil {
+		return
+	}
+	r.GET("/v1/files/grok-image/:name", func(c *gin.Context) {
+		path, mimeType, ok := service.ResolveGrokImageFile(cfg.Gateway.GrokImageCacheDir, c.Param("name"))
+		if !ok {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		c.Header("Cache-Control", "public, max-age=3600, immutable")
+		c.Header("Content-Type", mimeType)
+		c.File(path)
+	})
 }
 
 // getGroupPlatform extracts the group platform from the API Key stored in context.

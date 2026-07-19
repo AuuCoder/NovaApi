@@ -783,6 +783,13 @@ type GatewayConfig struct {
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// Grok web image runtime is a Sub2API-owned internal component used only by
+	// grok-imagine-image-lite. The selected account still comes from Sub2API.
+	GrokWebBridgeURL        string `mapstructure:"grok_web_bridge_url"`
+	GrokWebBridgeKey        string `mapstructure:"grok_web_bridge_key"`
+	GrokWebDefaultProxyURL  string `mapstructure:"grok_web_default_proxy_url"`
+	GrokImageCacheDir       string `mapstructure:"grok_image_cache_dir"`
+	GrokImageRetentionHours int    `mapstructure:"grok_image_retention_hours"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -1530,6 +1537,10 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.Environment = strings.TrimSpace(cfg.Log.Environment)
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
+	cfg.Gateway.GrokWebBridgeURL = strings.TrimRight(strings.TrimSpace(cfg.Gateway.GrokWebBridgeURL), "/")
+	cfg.Gateway.GrokWebBridgeKey = strings.TrimSpace(cfg.Gateway.GrokWebBridgeKey)
+	cfg.Gateway.GrokWebDefaultProxyURL = strings.TrimSpace(cfg.Gateway.GrokWebDefaultProxyURL)
+	cfg.Gateway.GrokImageCacheDir = strings.TrimSpace(cfg.Gateway.GrokImageCacheDir)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
@@ -2005,6 +2016,11 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
 	viper.SetDefault("gateway.image_concurrency.wait_timeout_seconds", 30)
 	viper.SetDefault("gateway.image_concurrency.max_waiting_requests", 100)
+	viper.SetDefault("gateway.grok_web_bridge_url", "http://grok-web-bridge:8090/generate")
+	viper.SetDefault("gateway.grok_web_bridge_key", "")
+	viper.SetDefault("gateway.grok_web_default_proxy_url", "http://grok-privoxy:8118")
+	viper.SetDefault("gateway.grok_image_cache_dir", "/app/data/grok-images")
+	viper.SetDefault("gateway.grok_image_retention_hours", 24)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))

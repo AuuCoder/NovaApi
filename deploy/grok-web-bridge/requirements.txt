@@ -1,0 +1,4 @@
+curl-cffi==0.15.0
+fastapi==0.136.0
+orjson==3.11.9
+uvicorn==0.44.0

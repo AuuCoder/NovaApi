@@ -3,6 +3,8 @@ package routes
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -81,6 +83,39 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
 	}
+}
+
+func TestGatewayRoutesGrokImageFileIsPublic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cacheDir := t.TempDir()
+	name := "c9f832f6-b219-4f85-b7ad-185af4937961.png"
+	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, name), []byte("png-data"), 0o600))
+
+	router := gin.New()
+	registerGrokImageFileRoute(router, &config.Config{
+		Gateway: config.GatewayConfig{GrokImageCacheDir: cacheDir},
+	})
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/files/grok-image/"+name, nil))
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "image/png", w.Header().Get("Content-Type"))
+	require.Equal(t, "public, max-age=3600, immutable", w.Header().Get("Cache-Control"))
+	require.Equal(t, "png-data", w.Body.String())
+}
+
+func TestGatewayRoutesGrokImageFileRejectsInvalidName(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	registerGrokImageFileRoute(router, &config.Config{
+		Gateway: config.GatewayConfig{GrokImageCacheDir: t.TempDir()},
+	})
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/files/grok-image/not-a-uuid.png", nil))
+
+	require.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {

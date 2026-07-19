@@ -166,10 +166,20 @@ services:
       - GATEWAY_IMAGE_CONCURRENCY_OVERFLOW_MODE=${GATEWAY_IMAGE_CONCURRENCY_OVERFLOW_MODE:-reject}
       - GATEWAY_IMAGE_CONCURRENCY_WAIT_TIMEOUT_SECONDS=${GATEWAY_IMAGE_CONCURRENCY_WAIT_TIMEOUT_SECONDS:-30}
       - GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS=${GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS:-100}
+
+      # Grok free web image generation. Credentials are selected from the
+      # Sub2API Grok account and sent only to the internal bridge.
+      - GATEWAY_GROK_WEB_BRIDGE_URL=${GATEWAY_GROK_WEB_BRIDGE_URL:-http://grok-web-bridge:8090/generate}
+      - GATEWAY_GROK_WEB_BRIDGE_KEY=${GROK_WEB_BRIDGE_KEY:?GROK_WEB_BRIDGE_KEY is required}
+      - GATEWAY_GROK_WEB_DEFAULT_PROXY_URL=${GATEWAY_GROK_WEB_DEFAULT_PROXY_URL:-http://grok-privoxy:8118}
+      - GATEWAY_GROK_IMAGE_CACHE_DIR=${GATEWAY_GROK_IMAGE_CACHE_DIR:-/app/data/grok-images}
+      - GATEWAY_GROK_IMAGE_RETENTION_HOURS=${GATEWAY_GROK_IMAGE_RETENTION_HOURS:-24}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      grok-web-bridge:
         condition: service_healthy
     networks:
       - sub2api-network
@@ -189,6 +199,91 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # ==========================================================================
+  # Grok Web Image Runtime (Sub2API-owned, no ChatGPT2API dependency)
+  # ==========================================================================
+  grok-warp-proxy:
+    image: caomingjun/warp:latest
+    container_name: sub2api-grok-warp-proxy
+    restart: unless-stopped
+    environment:
+      WARP_SLEEP: "2"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 0
+      net.ipv4.conf.all.src_valid_mark: 1
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.create_connection(('127.0.0.1', 1080), 5); s.close()\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  grok-privoxy:
+    image: vimagick/privoxy:latest
+    container_name: sub2api-grok-privoxy
+    restart: unless-stopped
+    depends_on:
+      grok-warp-proxy:
+        condition: service_healthy
+    volumes:
+      - ./grok-web-bridge/privoxy.conf:/etc/privoxy/config:ro
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8118 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  grok-flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: sub2api-grok-flaresolverr
+    restart: unless-stopped
+    depends_on:
+      grok-privoxy:
+        condition: service_healthy
+    environment:
+      LOG_LEVEL: ${GROK_FLARESOLVERR_LOG_LEVEL:-info}
+      TZ: ${TZ:-Asia/Shanghai}
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8191/ >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  grok-web-bridge:
+    build:
+      context: ./grok-web-bridge
+    image: sub2api/grok-web-bridge:local
+    container_name: sub2api-grok-web-bridge
+    restart: unless-stopped
+    depends_on:
+      grok-privoxy:
+        condition: service_healthy
+      grok-flaresolverr:
+        condition: service_healthy
+    environment:
+      GROK_WEB_BRIDGE_KEY: ${GROK_WEB_BRIDGE_KEY:?GROK_WEB_BRIDGE_KEY is required}
+      GROK_WEB_USER_AGENT: ${GROK_WEB_USER_AGENT:-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36}
+      GROK_FLARESOLVERR_URL: ${GROK_FLARESOLVERR_URL:-http://grok-flaresolverr:8191}
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # ===========================================================================
   # PostgreSQL Database

@@ -89,6 +89,10 @@ const (
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
 
+const GrokImagineImageModel = "grok-imagine-image"
+const GrokImagineImageLiteModel = "grok-imagine-image-lite"
+const GrokSSOAvailableCredentialKey = "grok_sso_available"
+
 const (
 	OpenAIAuthModePersonalAccessToken = "personalAccessToken"
 	openAIAuthModeCredentialKey       = "auth_mode"
@@ -758,6 +762,9 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // 请求卡死在该账号上、无法 failover 到真正支持该模型的 API Key 账号（#3662）。
 // 未知/自定义别名仍保持允许（兼容渠道级映射），见 isOpenAIOAuthServableModel。
 func (a *Account) IsModelSupported(requestedModel string) bool {
+	if a.IsGrok() && strings.EqualFold(strings.TrimSpace(requestedModel), GrokImagineImageLiteModel) {
+		return a.HasGrokSSOToken()
+	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
 		if a.IsOpenAIOAuth() && !a.IsOpenAIPassthroughEnabled() {
@@ -1276,6 +1283,30 @@ func (a *Account) GetGrokRefreshToken() string {
 		return ""
 	}
 	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetGrokSSOToken() string {
+	if a == nil || !a.IsGrok() {
+		return ""
+	}
+	token := strings.TrimSpace(a.GetCredential("sso_token"))
+	if strings.HasPrefix(strings.ToLower(token), "sso=") {
+		token = strings.TrimSpace(strings.SplitN(token[4:], ";", 2)[0])
+	}
+	return token
+}
+
+// HasGrokSSOToken reports whether the account can use Grok web SSO without
+// exposing the token in the scheduler's slim metadata snapshot.
+func (a *Account) HasGrokSSOToken() bool {
+	if a == nil || !a.IsGrok() {
+		return false
+	}
+	if a.GetGrokSSOToken() != "" {
+		return true
+	}
+	available, _ := a.Credentials[GrokSSOAvailableCredentialKey].(bool)
+	return available
 }
 
 func (a *Account) GetOpenAIIDToken() string {

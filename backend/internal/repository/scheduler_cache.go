@@ -427,6 +427,14 @@ func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any,
 }
 
 func buildSchedulerMetadataAccount(account service.Account) service.Account {
+	credentials := filterSchedulerCredentials(account.Credentials)
+	if account.IsGrok() && account.GetGrokSSOToken() != "" {
+		if credentials == nil {
+			credentials = make(map[string]any, 1)
+		}
+		credentials[service.GrokSSOAvailableCredentialKey] = true
+	}
+
 	return service.Account{
 		ID:                      account.ID,
 		Name:                    account.Name,
@@ -453,7 +461,7 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		QuotaDimension:          account.QuotaDimension,
 		AccountGroups:           filterSchedulerAccountGroups(account.AccountGroups),
 		GroupIDs:                filterSchedulerGroupIDs(account.GroupIDs, account.AccountGroups),
-		Credentials:             filterSchedulerCredentials(account.Credentials),
+		Credentials:             credentials,
 		Extra:                   filterSchedulerExtra(account.Extra),
 	}
 }

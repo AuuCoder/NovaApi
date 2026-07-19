@@ -48,6 +48,7 @@ type GrokMediaRequestInfo struct {
 	N               int
 	Size            string
 	SizeTier        string
+	ResponseFormat  string
 	Resolution      string
 	DurationSeconds int
 	InputImageURLs  []string
@@ -115,6 +116,10 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 	info.Model = strings.TrimSpace(info.Model)
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
+	info.ResponseFormat = strings.ToLower(strings.TrimSpace(info.ResponseFormat))
+	if info.ResponseFormat == "" {
+		info.ResponseFormat = "url"
+	}
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
 	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
 	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
@@ -131,6 +136,7 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
+	info.ResponseFormat = strings.TrimSpace(gjson.GetBytes(body, "response_format").String())
 	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
 	if duration := gjson.GetBytes(body, "duration"); duration.Exists() && duration.Type == gjson.Number {
 		info.DurationSeconds = int(duration.Int())
@@ -234,6 +240,8 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Prompt = value
 		case "size":
 			info.Size = value
+		case "response_format":
+			info.ResponseFormat = value
 		case "resolution":
 			info.Resolution = value
 		case "duration":
@@ -297,6 +305,10 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if account.Platform != PlatformGrok {
 		return nil, fmt.Errorf("account platform %s is not supported for grok media", account.Platform)
 	}
+	requestInfo := ParseGrokMediaRequest(contentType, body)
+	if endpoint == GrokMediaEndpointImagesGenerations && shouldUseGrokWebImage(account, requestInfo.Model) {
+		return s.ForwardGrokWebImage(ctx, c, account, requestInfo)
+	}
 
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -315,7 +327,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if err != nil {
 		return nil, err
 	}
-	requestInfo := ParseGrokMediaRequest(contentType, body)
+	requestInfo = ParseGrokMediaRequest(contentType, body)
 	body, contentType, err = sanitizeGrokMediaForwardBody(endpoint, body, contentType)
 	if err != nil {
 		return nil, err
@@ -385,6 +397,14 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		VideoResolution:      usage.VideoResolution,
 		VideoDurationSeconds: usage.VideoDurationSeconds,
 	}, nil
+}
+
+func shouldUseGrokWebImage(account *Account, model string) bool {
+	model = strings.TrimSpace(model)
+	if strings.EqualFold(model, GrokImagineImageLiteModel) {
+		return true
+	}
+	return strings.EqualFold(model, GrokImagineImageModel) && account != nil && account.GetGrokSSOToken() != ""
 }
 
 func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/stretchr/testify/require"
 )
 
 type snapshotHydrationCache struct {
@@ -114,6 +115,62 @@ func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedul
 	if got := selection.Account.GetOpenAIApiKey(); got != "sk-live" {
 		t.Fatalf("expected hydrated api key, got %q", got)
 	}
+}
+
+func TestGrokLiteSelectAccountUsesSlimSSOCapabilityAndHydratesToken(t *testing.T) {
+	groupID := int64(8)
+	cache := &snapshotHydrationCache{
+		snapshot: []*Account{
+			{
+				ID:          14,
+				Platform:    PlatformGrok,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					GrokSSOAvailableCredentialKey: true,
+				},
+				GroupIDs: []int64{groupID},
+			},
+		},
+		accounts: map[int64]*Account{
+			14: {
+				ID:          14,
+				Platform:    PlatformGrok,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"sso_token": "secret-sso-token",
+				},
+				GroupIDs: []int64{groupID},
+				AccountGroups: []AccountGroup{
+					{AccountID: 14, GroupID: groupID},
+				},
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{
+		schedulerSnapshot: NewSchedulerSnapshotService(cache, nil, nil, nil, nil),
+		cache:             &stubGatewayCache{},
+	}
+
+	result, err := svc.selectAccountWithLoadAwareness(
+		context.Background(),
+		&groupID,
+		PlatformGrok,
+		"",
+		GrokImagineImageLiteModel,
+		nil,
+		false,
+		OpenAIEndpointCapability(""),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Account)
+	require.Equal(t, "secret-sso-token", result.Account.GetGrokSSOToken())
 }
 
 func TestOpenAINewAcquiredSelectionResult_ReleasesSlotWhenHydrationFails(t *testing.T) {

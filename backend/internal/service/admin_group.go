@@ -134,7 +134,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, errors.New("rate_multiplier must be > 0")
 	}
 
-	platform := input.Platform
+	platform := normalizePlatformIdentifier(input.Platform)
 	if platform == "" {
 		platform = PlatformAnthropic
 	}
@@ -436,7 +436,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.Description = *input.Description
 	}
 	if input.Platform != "" {
-		group.Platform = input.Platform
+		if platform := normalizePlatformIdentifier(input.Platform); platform != "" {
+			group.Platform = platform
+		}
 	}
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier <= 0 {

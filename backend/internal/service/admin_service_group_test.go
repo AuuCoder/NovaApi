@@ -174,6 +174,38 @@ func TestAdminService_CreateGroup_WithImagePricing(t *testing.T) {
 	require.InDelta(t, 0.30, *repo.created.ImagePrice4K, 0.0001)
 }
 
+func TestAdminService_CreateGroup_NormalizesLegacyXAIPlatform(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           "legacy-xai-group",
+		Platform:       " XAI ",
+		RateMultiplier: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, PlatformGrok, group.Platform)
+	require.True(t, group.AllowImageGeneration)
+	require.Equal(t, PlatformGrok, repo.created.Platform)
+}
+
+func TestAdminService_UpdateGroup_NormalizesLegacyXAIPlatform(t *testing.T) {
+	repo := &groupRepoStubForAdmin{getByID: &Group{
+		ID:               7,
+		Name:             "legacy-group",
+		Platform:         PlatformAnthropic,
+		RateMultiplier:   1,
+		Status:           StatusActive,
+		SubscriptionType: SubscriptionTypeStandard,
+	}}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.UpdateGroup(context.Background(), 7, &UpdateGroupInput{Platform: " XAI "})
+	require.NoError(t, err)
+	require.Equal(t, PlatformGrok, group.Platform)
+	require.Equal(t, PlatformGrok, repo.updated.Platform)
+}
+
 func TestAdminService_CreateGroup_WithVideoPricing(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{groupRepo: repo}

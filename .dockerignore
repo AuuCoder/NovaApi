@@ -25,11 +25,15 @@ docs/
 
 # OS files
 .DS_Store
+._*
+**/._*
 Thumbs.db
 
 # Build artifacts
 dist/
 build/
+__pycache__/
+*.py[cod]
 
 # Node modules (will be installed in container)
 frontend/node_modules/
