@@ -49,6 +49,8 @@ const (
 	providerOpenAIPath = "/v1/chat/completions"
 	// providerOpenAIResponsesPath OpenAI Responses API 路径。
 	providerOpenAIResponsesPath = "/v1/responses"
+	// providerOpenAIImagesPath OpenAI-compatible Images API 路径。
+	providerOpenAIImagesPath = "/v1/images/generations"
 	// providerAnthropicPath Anthropic Messages 路径。
 	providerAnthropicPath = "/v1/messages"
 	// providerGeminiPathTemplate Gemini generateContent 路径模板（含 model 占位）。
@@ -87,6 +89,8 @@ const (
 	monitorAnthropicAPIVersion = "2023-06-01"
 	// monitorChallengeMaxTokens 单次 challenge 请求的 max_tokens（足够回答个位数算术）。
 	monitorChallengeMaxTokens = 50
+	// monitorImagePrompt 图片模型健康检查使用固定提示词。图片检查会真实生成一张图片。
+	monitorImagePrompt = "A plain black square centered on a white background."
 
 	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
 	monitorRunOneBuffer = 10 * time.Second

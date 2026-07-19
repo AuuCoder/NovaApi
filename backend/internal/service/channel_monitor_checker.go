@@ -64,6 +64,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 
 	challenge := generateChallenge()
 	mode := bodyOverrideMode(opts)
+	_, imageRequest := normalizeOpenAIImageMonitorModel(provider, model)
 
 	start := time.Now()
 	respText, rawBody, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
@@ -83,6 +84,14 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		bodySnippet := truncateForErrorBody(rawBody)
 		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("upstream HTTP %d: %s", statusCode, bodySnippet)))
 		return res
+	}
+	if imageRequest {
+		if strings.TrimSpace(respText) == "" {
+			res.Status = MonitorStatusFailed
+			res.Message = truncateMessage("image response: upstream returned 2xx without image data")
+			return res
+		}
+		return finalizeOperationalOrDegraded(res, latency, latencyMs)
 	}
 
 	// Replace 模式：跳过 challenge 校验（用户 body 是静态的，challenge 没法嵌入）。
@@ -238,13 +247,67 @@ var providerOpenAIResponsesAdapter = providerAdapter{
 	textPath: "output.0.content.0.text",
 }
 
-// providerAdapterFor 按 provider + api_mode 选择具体 adapter。
-func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool) {
-	if provider == MonitorProviderOpenAI && defaultAPIMode(apiMode) == MonitorAPIModeResponses {
-		return providerOpenAIResponsesAdapter, MonitorAPIModeResponses, true
+const monitorAPIModeImages = "images"
+
+//nolint:gochecknoglobals // 适配器是只读静态配置，初始化后不变更。
+var providerOpenAIImagesAdapter = providerAdapter{
+	buildPath: func(string) string { return providerOpenAIImagesPath },
+	buildBody: func(model, _ string) ([]byte, error) {
+		normalizedModel, ok := normalizeOpenAIImageMonitorModel(MonitorProviderOpenAI, model)
+		if !ok {
+			return nil, fmt.Errorf("unsupported image monitor model %q", model)
+		}
+		return json.Marshal(map[string]any{
+			"model":           normalizedModel,
+			"prompt":          monitorImagePrompt,
+			"n":               1,
+			"response_format": "url",
+		})
+	},
+	buildHeaders: func(apiKey string) map[string]string {
+		return map[string]string{"Authorization": "Bearer " + apiKey}
+	},
+	textPath: "data.0.url",
+}
+
+// providerAdapterFor 按 provider + api_mode + model 选择具体 adapter。
+func providerAdapterFor(provider, apiMode, model string) (providerAdapter, string, bool) {
+	if provider == MonitorProviderOpenAI {
+		if _, ok := normalizeOpenAIImageMonitorModel(provider, model); ok {
+			return providerOpenAIImagesAdapter, monitorAPIModeImages, true
+		}
+		if defaultAPIMode(apiMode) == MonitorAPIModeResponses {
+			return providerOpenAIResponsesAdapter, MonitorAPIModeResponses, true
+		}
 	}
 	adapter, ok := providerAdapters[provider]
 	return adapter, MonitorAPIModeChatCompletions, ok
+}
+
+// normalizeOpenAIImageMonitorModel 识别图片模型，并兼容历史监控配置中的旧别名。
+// 返回的模型名可以直接发送到统一的 /v1/images/generations 接口。
+func normalizeOpenAIImageMonitorModel(provider, model string) (string, bool) {
+	if provider != MonitorProviderOpenAI {
+		return strings.TrimSpace(model), false
+	}
+
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if strings.HasPrefix(normalized, "gpt- image-") {
+		normalized = "gpt-image-" + strings.TrimPrefix(normalized, "gpt- image-")
+	}
+	switch {
+	case normalized == "grok-image":
+		normalized = "grok-imagine"
+	case strings.HasPrefix(normalized, "grok-image-image"):
+		normalized = "grok-imagine-image" + strings.TrimPrefix(normalized, "grok-image-image")
+	}
+
+	if strings.HasPrefix(normalized, "gpt-image-") ||
+		normalized == "grok-imagine" ||
+		strings.HasPrefix(normalized, "grok-imagine-image") {
+		return normalized, true
+	}
+	return normalized, false
 }
 
 // isSupportedProvider 校验 provider 字符串是否在 adapter 表中。
@@ -267,7 +330,7 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
 		return "", "", 0, err
 	}
-	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode)
+	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode, model)
 	if !ok {
 		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
 	}
@@ -284,7 +347,17 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
 		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
 	}
+	if provider == MonitorProviderOpenAI && apiMode == monitorAPIModeImages {
+		return extractOpenAIImageResult(respBytes), string(respBytes), status, nil
+	}
 	return gjson.GetBytes(respBytes, adapter.textPath).String(), string(respBytes), status, nil
+}
+
+func extractOpenAIImageResult(respBytes []byte) string {
+	if imageURL := strings.TrimSpace(gjson.GetBytes(respBytes, "data.0.url").String()); imageURL != "" {
+		return imageURL
+	}
+	return strings.TrimSpace(gjson.GetBytes(respBytes, "data.0.b64_json").String())
 }
 
 // extractOpenAIResponsesText 聚合 Responses API 的最终 assistant 文本。
@@ -407,6 +480,7 @@ func buildRequestBody(adapter providerAdapter, provider, apiMode, model, prompt 
 var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderOpenAI + ":" + MonitorAPIModeChatCompletions: {"model": true, "messages": true, "stream": true},
 	MonitorProviderOpenAI + ":" + MonitorAPIModeResponses:       {"model": true, "instructions": true, "input": true, "stream": true},
+	MonitorProviderOpenAI + ":" + monitorAPIModeImages:          {"model": true, "prompt": true, "n": true, "response_format": true},
 	MonitorProviderAnthropic:                                    {"model": true, "messages": true},
 	MonitorProviderGemini:                                       {"contents": true},
 }

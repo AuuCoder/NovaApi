@@ -65,6 +65,8 @@ type openAICaptureHandler struct {
 	lastPath                  string
 	status                    int
 	responsesLeadingReasoning bool
+	imageResponseField        string
+	rawResponseBody           string
 }
 
 func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -80,8 +82,24 @@ func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(h.status)
+	if h.rawResponseBody != "" {
+		_, _ = w.Write([]byte(h.rawResponseBody))
+		return
+	}
 
 	answer := answerFromOpenAIRequest(parsed)
+	if h.lastPath == providerOpenAIImagesPath {
+		image := map[string]any{}
+		switch h.imageResponseField {
+		case "b64_json":
+			image["b64_json"] = "aW1hZ2U="
+		case "empty":
+		default:
+			image["url"] = "https://example.com/monitor.png"
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{image}})
+		return
+	}
 	if h.lastPath == providerOpenAIResponsesPath {
 		output := []map[string]any{}
 		if h.responsesLeadingReasoning {
@@ -239,6 +257,106 @@ func TestRunCheckForModel_OpenAIResponses_SkipsLeadingReasoningItem(t *testing.T
 	}
 	if h.lastPath != providerOpenAIResponsesPath {
 		t.Fatalf("expected responses path %q, got %q", providerOpenAIResponsesPath, h.lastPath)
+	}
+}
+
+func TestNormalizeOpenAIImageMonitorModel(t *testing.T) {
+	tests := []struct {
+		model string
+		want  string
+		ok    bool
+	}{
+		{model: "gpt-image-2", want: "gpt-image-2", ok: true},
+		{model: "gpt- image-2", want: "gpt-image-2", ok: true},
+		{model: "grok-imagine", want: "grok-imagine", ok: true},
+		{model: "grok-image", want: "grok-imagine", ok: true},
+		{model: "grok-image-image-lite", want: "grok-imagine-image-lite", ok: true},
+		{model: "grok-image-image-quality", want: "grok-imagine-image-quality", ok: true},
+		{model: "grok-imagine-edit", want: "grok-imagine-edit", ok: false},
+		{model: "grok-imagine-video", want: "grok-imagine-video", ok: false},
+		{model: "gpt-5.6-sol", want: "gpt-5.6-sol", ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			got, ok := normalizeOpenAIImageMonitorModel(MonitorProviderOpenAI, tt.model)
+			if got != tt.want || ok != tt.ok {
+				t.Fatalf("normalizeOpenAIImageMonitorModel(%q) = (%q, %v), want (%q, %v)", tt.model, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestRunCheckForModel_OpenAIImageUsesGenerationsEndpoint(t *testing.T) {
+	h := &openAICaptureHandler{}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "grok-image-image-lite", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("image URL response should be operational, got status=%s message=%q", res.Status, res.Message)
+	}
+	if h.lastPath != providerOpenAIImagesPath {
+		t.Fatalf("expected images path %q, got %q", providerOpenAIImagesPath, h.lastPath)
+	}
+	if h.lastBody["model"] != "grok-imagine-image-lite" {
+		t.Errorf("expected normalized image model, got %v", h.lastBody["model"])
+	}
+	if strings.TrimSpace(stringFromAny(h.lastBody["prompt"])) == "" {
+		t.Error("image monitor body should contain a prompt")
+	}
+	if h.lastBody["n"] != float64(1) {
+		t.Errorf("image monitor body should set n=1, got %v", h.lastBody["n"])
+	}
+	if h.lastBody["response_format"] != "url" {
+		t.Errorf("image monitor body should request URL response, got %v", h.lastBody["response_format"])
+	}
+	if _, ok := h.lastBody["messages"]; ok {
+		t.Error("image monitor body must not contain chat messages")
+	}
+}
+
+func TestRunCheckForModel_OpenAIImageAcceptsBase64Response(t *testing.T) {
+	h := &openAICaptureHandler{imageResponseField: "b64_json"}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-image-2", nil)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("image base64 response should be operational, got status=%s message=%q", res.Status, res.Message)
+	}
+}
+
+func TestRunCheckForModel_OpenAIImageEmptyDataFails(t *testing.T) {
+	h := &openAICaptureHandler{imageResponseField: "empty"}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-image-2", nil)
+
+	if res.Status != MonitorStatusFailed {
+		t.Fatalf("empty image response should fail, got status=%s message=%q", res.Status, res.Message)
+	}
+	if !strings.Contains(res.Message, "without image data") {
+		t.Fatalf("expected missing image data message, got %q", res.Message)
+	}
+}
+
+func TestRunCheckForModel_OpenAIImagePreservesErrorBody(t *testing.T) {
+	h := &openAICaptureHandler{
+		status:          http.StatusForbidden,
+		rawResponseBody: `{"error":{"message":"image access denied"}}`,
+	}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-image-2", nil)
+
+	if res.Status != MonitorStatusError {
+		t.Fatalf("non-2xx image response should be error, got status=%s", res.Status)
+	}
+	if !strings.Contains(res.Message, "upstream HTTP 403") || !strings.Contains(res.Message, "image access denied") {
+		t.Fatalf("expected HTTP status and upstream body, got %q", res.Message)
 	}
 }
 

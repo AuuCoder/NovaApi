@@ -185,6 +185,13 @@ curl "https://your-domain.example/v1/images/generations" \
   }'
 ```
 
+## 渠道监控
+
+- 文本模型继续使用配置的 Chat Completions 或 Responses API；`gpt-image-*` 与 `grok-imagine*` 图片模型会自动改用 `/v1/images/generations`。
+- 历史配置中的 `grok-image`、`grok-image-image*` 会在请求时自动归一化，但新配置应使用 `grok-imagine`、`grok-imagine-image*`。
+- 图片监控会真实生成一张图片，因此会消耗上游额度并触发正常图片计费，不建议设置过短的检测间隔。
+- 一个监控配置只使用一个 API Key。API Key 绑定的分组平台决定账号池，所以 OpenAI 图片与 Grok 图片应分别建立监控配置；两者对外请求地址仍统一为 `/v1/images/generations`。
+
 ## 账号数据
 
 Grok 账号使用 `platform=grok`。免费 Web 生图至少需要：
