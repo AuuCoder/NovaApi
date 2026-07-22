@@ -9,7 +9,6 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -19,15 +18,13 @@ import (
 
 // PaymentHandler handles user-facing payment requests.
 type PaymentHandler struct {
-	channelService *service.ChannelService
 	paymentService *service.PaymentService
 	configService  *service.PaymentConfigService
 }
 
 // NewPaymentHandler creates a new PaymentHandler.
-func NewPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService, channelService *service.ChannelService) *PaymentHandler {
+func NewPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService) *PaymentHandler {
 	return &PaymentHandler{
-		channelService: channelService,
 		paymentService: paymentService,
 		configService:  configService,
 	}
@@ -67,6 +64,7 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 		Description        string   `json:"description"`
 		Price              float64  `json:"price"`
 		OriginalPrice      *float64 `json:"original_price,omitempty"`
+		Currency           string   `json:"currency,omitempty"`
 		ValidityDays       int      `json:"validity_days"`
 		ValidityUnit       string   `json:"validity_unit"`
 		Features           string   `json:"features"`
@@ -84,22 +82,12 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 			RateMultiplier: gi.RateMultiplier, PeakRateEnabled: gi.PeakRateEnabled,
 			PeakStart: gi.PeakStart, PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
 			Name: p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
+			Currency:     p.Currency,
 			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: p.Features,
 			ProductName: p.ProductName, ForSale: p.ForSale, SortOrder: p.SortOrder,
 		})
 	}
 	response.Success(c, result)
-}
-
-// GetChannels returns enabled payment channels.
-// GET /api/v1/payment/channels
-func (h *PaymentHandler) GetChannels(c *gin.Context) {
-	channels, _, err := h.channelService.List(c.Request.Context(), pagination.PaginationParams{Page: 1, PageSize: 1000}, "active", "")
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, channels)
 }
 
 // GetCheckoutInfo returns all data the payment page needs in a single call:
@@ -138,6 +126,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			WeeklyLimitUSD: gi.WeeklyLimitUSD, MonthlyLimitUSD: gi.MonthlyLimitUSD,
 			ModelScopes: gi.ModelScopes,
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
+			Currency:     p.Currency,
 			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
 			ProductName: p.ProductName,
 		})
@@ -192,6 +181,7 @@ type checkoutPlan struct {
 	Description        string   `json:"description"`
 	Price              float64  `json:"price"`
 	OriginalPrice      *float64 `json:"original_price,omitempty"`
+	Currency           string   `json:"currency,omitempty"`
 	ValidityDays       int      `json:"validity_days"`
 	ValidityUnit       string   `json:"validity_unit"`
 	Features           []string `json:"features"`

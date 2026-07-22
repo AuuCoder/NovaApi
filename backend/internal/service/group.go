@@ -28,6 +28,9 @@ type Group struct {
 	IsExclusive        bool
 	Status             string
 	Hydrated           bool // indicates the group was loaded from a trusted repository source
+	// DuplicateOperationID is internal persistence metadata used only to recover
+	// an already committed one-click copy. It must never be mapped to API DTOs.
+	DuplicateOperationID string
 
 	SubscriptionType    string
 	DailyLimitUSD       *float64
@@ -50,6 +53,9 @@ type Group struct {
 	VideoPrice480P               *float64
 	VideoPrice720P               *float64
 	VideoPrice1080P              *float64
+	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；
+	// nil 表示使用默认价 defaultWebSearchPricePerCall（官方 $10/1000 次）。
+	WebSearchPricePerCall *float64
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool

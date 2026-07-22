@@ -128,6 +128,12 @@
             }}</span>
           </template>
 
+          <template #cell-id="{ value }">
+            <span class="font-mono text-xs text-gray-500 dark:text-gray-400"
+              >#{{ value }}</span
+            >
+          </template>
+
           <template #cell-platform="{ value }">
             <span
               :class="[
@@ -359,6 +365,26 @@
               >
                 <Icon name="edit" size="sm" />
                 <span class="text-xs">{{ t("common.edit") }}</span>
+              </button>
+              <button
+                data-testid="group-duplicate"
+                :title="
+                  duplicatingGroupIds.has(row.id)
+                    ? t('admin.groups.duplicating')
+                    : t('admin.groups.duplicate')
+                "
+                :disabled="duplicatingGroupIds.has(row.id)"
+                @click="handleDuplicate(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+              >
+                <Icon name="copy" size="sm" />
+                <span class="text-xs">
+                  {{
+                    duplicatingGroupIds.has(row.id)
+                      ? t("admin.groups.duplicating")
+                      : t("admin.groups.duplicate")
+                  }}
+                </span>
               </button>
               <button
                 @click="handleRateMultipliers(row)"
@@ -1312,6 +1338,41 @@
             <p class="input-hint">
               {{ t("admin.groups.claudeCode.fallbackHint") }}
             </p>
+          </div>
+        </div>
+
+        <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
+        <div
+          v-if="createForm.platform === 'openai'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.webSearchPricing.title") }}
+          </h4>
+          <div>
+            <label class="input-label">{{
+              t("admin.groups.webSearchPricing.pricePerCall")
+            }}</label>
+            <input
+              v-model.number="createForm.web_search_price_per_call"
+              type="number"
+              step="0.001"
+              min="0"
+              placeholder="0.01"
+              class="input"
+            />
+            <p class="input-hint">
+              {{ t("admin.groups.webSearchPricing.pricePerCallHint") }}
+            </p>
+            <div
+              class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+            >
+              {{
+                t("admin.groups.webSearchPricing.finalPricePreview", {
+                  price: createWebSearchFinalPricePreview,
+                })
+              }}
+            </div>
           </div>
         </div>
 
@@ -2790,6 +2851,41 @@
           </div>
         </div>
 
+        <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
+        <div
+          v-if="editForm.platform === 'openai'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.webSearchPricing.title") }}
+          </h4>
+          <div>
+            <label class="input-label">{{
+              t("admin.groups.webSearchPricing.pricePerCall")
+            }}</label>
+            <input
+              v-model.number="editForm.web_search_price_per_call"
+              type="number"
+              step="0.001"
+              min="0"
+              placeholder="0.01"
+              class="input"
+            />
+            <p class="input-hint">
+              {{ t("admin.groups.webSearchPricing.pricePerCallHint") }}
+            </p>
+            <div
+              class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+            >
+              {{
+                t("admin.groups.webSearchPricing.finalPricePreview", {
+                  price: editWebSearchFinalPricePreview,
+                })
+              }}
+            </div>
+          </div>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -3507,6 +3603,7 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
+import { extractApiErrorMessage } from "@/utils/apiError";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";
 import {
@@ -3542,10 +3639,19 @@ const appStore = useAppStore();
 const onboardingStore = useOnboardingStore();
 
 const ALWAYS_VISIBLE_COLUMNS = new Set(["name", "actions"]);
+// Default hidden columns (hidden on first load / after schema bumps).
+const DEFAULT_HIDDEN_COLUMNS = ["id"];
 const HIDDEN_COLUMNS_KEY = "group-hidden-columns";
+// Bump when adding new default-hidden columns so existing admins pick them up once.
+const COLUMN_SETTINGS_VERSION_KEY = "group-column-settings-version";
+const COLUMN_SETTINGS_VERSION = 2;
+const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
+  2: ["id"],
+};
 
 const allColumns = computed<Column[]>(() => [
   { key: "name", label: t("admin.groups.columns.name"), sortable: true },
+  { key: "id", label: t("admin.groups.columns.id"), sortable: true },
   {
     key: "platform",
     label: t("admin.groups.columns.platform"),
@@ -3595,16 +3701,51 @@ const loadSavedColumns = () => {
   hiddenColumns.clear();
   try {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY);
-    if (!saved) return;
-    const parsed = JSON.parse(saved);
-    if (!Array.isArray(parsed)) return;
-
     const validKeys = getValidHiddenColumnKeys();
-    parsed
-      .filter((key): key is string => typeof key === "string" && validKeys.has(key))
-      .forEach((key) => hiddenColumns.add(key));
+
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        parsed
+          .filter(
+            (key): key is string =>
+              typeof key === "string" && validKeys.has(key),
+          )
+          .forEach((key) => hiddenColumns.add(key));
+      }
+
+      // Existing admins: auto-hide columns newly added as default-hidden.
+      const storedVersion = Number(
+        localStorage.getItem(COLUMN_SETTINGS_VERSION_KEY) ?? "1",
+      );
+      if (storedVersion < COLUMN_SETTINGS_VERSION) {
+        let mutated = false;
+        for (let v = storedVersion + 1; v <= COLUMN_SETTINGS_VERSION; v++) {
+          for (const key of VERSION_NEW_HIDDEN_COLUMNS[v] ?? []) {
+            if (validKeys.has(key) && !hiddenColumns.has(key)) {
+              hiddenColumns.add(key);
+              mutated = true;
+            }
+          }
+        }
+        if (mutated) {
+          saveColumnsToStorage();
+        } else {
+          localStorage.setItem(
+            COLUMN_SETTINGS_VERSION_KEY,
+            String(COLUMN_SETTINGS_VERSION),
+          );
+        }
+      }
+    } else {
+      DEFAULT_HIDDEN_COLUMNS.forEach((key) => {
+        if (validKeys.has(key)) hiddenColumns.add(key);
+      });
+      saveColumnsToStorage();
+    }
   } catch (error) {
     console.error("Failed to load group column settings:", error);
+    DEFAULT_HIDDEN_COLUMNS.forEach((key) => hiddenColumns.add(key));
   }
 };
 
@@ -3613,6 +3754,10 @@ const saveColumnsToStorage = () => {
     const validKeys = getValidHiddenColumnKeys();
     const keys = [...hiddenColumns].filter((key) => validKeys.has(key));
     localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify(keys));
+    localStorage.setItem(
+      COLUMN_SETTINGS_VERSION_KEY,
+      String(COLUMN_SETTINGS_VERSION),
+    );
   } catch (error) {
     console.error("Failed to save group column settings:", error);
   }
@@ -3843,6 +3988,7 @@ const submitting = ref(false);
 const sortSubmitting = ref(false);
 const editingGroup = ref<AdminGroup | null>(null);
 const deletingGroup = ref<AdminGroup | null>(null);
+const duplicatingGroupIds = reactive(new Set<number>());
 const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
@@ -3888,6 +4034,8 @@ const createForm = reactive({
   video_price_480p: null as number | null,
   video_price_720p: null as number | null,
   video_price_1080p: null as number | null,
+  // Codex 网页搜索按次计费（仅 openai 平台使用）；null = 使用默认价 0.01
+  web_search_price_per_call: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -4233,6 +4381,8 @@ const editForm = reactive({
   video_price_480p: null as number | null,
   video_price_720p: null as number | null,
   video_price_1080p: null as number | null,
+  // Codex 网页搜索按次计费（仅 openai 平台使用）；null = 使用默认价 0.01
+  web_search_price_per_call: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -4388,6 +4538,27 @@ const createVideoFinalPricePreview = computed(() =>
 );
 const editVideoFinalPricePreview = computed(() =>
   buildVideoFinalPricePreview(editForm),
+);
+
+// Codex 网页搜索单次默认价（与后端 defaultWebSearchPricePerCall 一致，官方 $10/1000 次）
+const DEFAULT_WEB_SEARCH_PRICE_PER_CALL = 0.01;
+
+const buildWebSearchFinalPricePreview = (form: {
+  web_search_price_per_call: number | string | null;
+  rate_multiplier: number | string | null;
+}) => {
+  const basePrice =
+    parsePreviewPrice(form.web_search_price_per_call) ??
+    DEFAULT_WEB_SEARCH_PRICE_PER_CALL;
+  const multiplier = normalizePreviewNumber(form.rate_multiplier, 1);
+  return formatImagePricePreview(basePrice * multiplier);
+};
+
+const createWebSearchFinalPricePreview = computed(() =>
+  buildWebSearchFinalPricePreview(createForm),
+);
+const editWebSearchFinalPricePreview = computed(() =>
+  buildWebSearchFinalPricePreview(editForm),
 );
 
 const resetDisabledBatchImagePricing = (
@@ -4615,6 +4786,7 @@ const closeCreateModal = () => {
   createForm.video_price_480p = null;
   createForm.video_price_720p = null;
   createForm.video_price_1080p = null;
+  createForm.web_search_price_per_call = null;
   createForm.peak_rate_enabled = false;
   createForm.peak_start = "";
   createForm.peak_end = "";
@@ -4726,6 +4898,9 @@ const handleCreateGroup = async () => {
     requestData.video_price_480p = emptyToNull(requestData.video_price_480p);
     requestData.video_price_720p = emptyToNull(requestData.video_price_720p);
     requestData.video_price_1080p = emptyToNull(requestData.video_price_1080p);
+    requestData.web_search_price_per_call = emptyToNull(
+      requestData.web_search_price_per_call,
+    );
     requestData.peak_rate_enabled = createForm.peak_rate_enabled;
     requestData.peak_start = createForm.peak_start;
     requestData.peak_end = createForm.peak_end;
@@ -4779,6 +4954,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.video_price_480p = group.video_price_480p;
   editForm.video_price_720p = group.video_price_720p;
   editForm.video_price_1080p = group.video_price_1080p;
+  editForm.web_search_price_per_call = group.web_search_price_per_call ?? null;
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
@@ -4836,6 +5012,7 @@ const closeEditModal = () => {
   editForm.video_price_480p = null;
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
+  editForm.web_search_price_per_call = null;
   resetMessagesDispatchFormState(editForm);
   resetModelsListState(editModelsListState);
 };
@@ -4914,6 +5091,9 @@ const handleUpdateGroup = async () => {
     payload.video_price_480p = emptyPriceToClear(payload.video_price_480p);
     payload.video_price_720p = emptyPriceToClear(payload.video_price_720p);
     payload.video_price_1080p = emptyPriceToClear(payload.video_price_1080p);
+    payload.web_search_price_per_call = emptyPriceToClear(
+      payload.web_search_price_per_call,
+    );
     payload.peak_rate_enabled = editForm.peak_rate_enabled;
     payload.peak_start = editForm.peak_start;
     payload.peak_end = editForm.peak_end;
@@ -4966,6 +5146,25 @@ const handleRateMultipliers = (group: AdminGroup) => {
 const handleRPMOverrides = (group: AdminGroup) => {
   rpmOverridesGroup.value = group;
   showRPMOverridesModal.value = true;
+};
+
+const handleDuplicate = async (group: AdminGroup) => {
+  if (duplicatingGroupIds.has(group.id)) return;
+
+  duplicatingGroupIds.add(group.id);
+  try {
+    const duplicate = await adminAPI.groups.duplicate(group.id);
+    appStore.showSuccess(
+      t("admin.groups.duplicateSuccess", { name: duplicate.name }),
+    );
+    await loadGroups();
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.groups.duplicateFailed")),
+    );
+  } finally {
+    duplicatingGroupIds.delete(group.id);
+  }
 };
 
 const handleDelete = (group: AdminGroup) => {

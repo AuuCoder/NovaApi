@@ -132,11 +132,11 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 			})
-			s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+			shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
 		writeOpenAIEmbeddingsUpstreamResponse(c, resp, respBody, s.responseHeaderFilter)
@@ -206,17 +206,8 @@ func extractOpenAIEmbeddingsUsage(body []byte) OpenAIUsage {
 		usage.Get("completion_tokens"),
 		usage.Get("output_tokens"),
 	)
-	cacheReadTokens := firstPositiveGJSONInt(
-		usage.Get("prompt_tokens_details.cached_tokens"),
-		usage.Get("input_tokens_details.cached_tokens"),
-		usage.Get("cache_read_tokens"),
-		usage.Get("cache_read_input_tokens"),
-	)
-	cacheCreationTokens := firstPositiveGJSONInt(
-		usage.Get("cache_creation_tokens"),
-		usage.Get("cache_creation_input_tokens"),
-		usage.Get("input_tokens_details.cache_creation_tokens"),
-	)
+	cacheReadTokens := openAICacheReadTokensFromUsage(usage)
+	cacheCreationTokens := openAICacheCreationTokensFromUsage(usage)
 	// 多模态 embedding（如 doubao-embedding-vision）回传图文 token 拆分，
 	// 用于图文不同价计费；纯文本 embedding 该字段为 0，行为不变。
 	imageInputTokens := firstPositiveGJSONInt(

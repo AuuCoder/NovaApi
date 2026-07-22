@@ -10,11 +10,20 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
+
+func validateOpenAIWSBearerToken(account *Account, token string) error {
+	if account == nil {
+		return errors.New("account is nil")
+	}
+	if strings.TrimSpace(token) == "" && !account.IsOpenAIAgentIdentity() {
+		return errors.New("token is empty")
+	}
+	return nil
+}
 
 func (s *OpenAIGatewayService) buildOpenAIResponsesWSURL(account *Account) (string, error) {
 	if account == nil {
@@ -68,12 +77,19 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	promptCacheKey string,
 ) (http.Header, openAIWSSessionHeaderResolution, error) {
 	headers := make(http.Header)
-	headers.Set("authorization", "Bearer "+token)
+	if account == nil || !account.IsOpenAIAgentIdentity() {
+		headers.Set("authorization", "Bearer "+token)
+	}
 
 	sessionResolution := resolveOpenAIWSSessionHeaders(c, promptCacheKey)
 	if c != nil && c.Request != nil {
 		if v := strings.TrimSpace(c.Request.Header.Get("accept-language")); v != "" {
 			headers.Set("accept-language", v)
+		}
+		for _, value := range c.Request.Header.Values("x-codex-beta-features") {
+			if value = strings.TrimSpace(value); value != "" {
+				headers.Add("x-codex-beta-features", value)
+			}
 		}
 	}
 	// OAuth 账号：将 apiKeyID 混入 session 标识符，防止跨用户会话碰撞。
@@ -127,8 +143,11 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		headers.Set("user-agent", codexCLIUserAgent)
 	}
-	if account != nil && account.Type == AccountTypeOAuth && !openai.IsCodexCLIRequest(headers.Get("user-agent")) {
-		headers.Set("user-agent", codexCLIUserAgent)
+	// 终态收口：originator 必须与最终 user-agent 首段配套且为官方身份，非官方 UA 整体回退为
+	// 默认 Codex CLI 身份（承接原「非 Codex UA 兜底」，并修复其把 codex-tui 等官方 UA 改写为
+	// codex_cli_rs 造成的 originator 错配 404），详见 issue #3901。
+	if account != nil && account.Type == AccountTypeOAuth {
+		enforceCodexIdentityHeaders(headers)
 	}
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）。

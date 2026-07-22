@@ -43,6 +43,8 @@ type Group struct {
 	IsExclusive bool `json:"is_exclusive,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// 内部幂等恢复标识，不对 API 暴露
+	DuplicateOperationID *string `json:"duplicate_operation_id,omitempty"`
 	// Platform holds the value of the "platform" field.
 	Platform string `json:"platform,omitempty"`
 	// SubscriptionType holds the value of the "subscription_type" field.
@@ -83,6 +85,8 @@ type Group struct {
 	VideoPrice720p *float64 `json:"video_price_720p,omitempty"`
 	// VideoPrice1080p holds the value of the "video_price_1080p" field.
 	VideoPrice1080p *float64 `json:"video_price_1080p,omitempty"`
+	// Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示使用默认价 0.01（官方 $10/1000 次）
+	WebSearchPricePerCall *float64 `json:"web_search_price_per_call,omitempty"`
 	// 是否仅允许 Claude Code 客户端
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
 	// 非 Claude Code 请求降级使用的分组 ID
@@ -223,11 +227,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -325,6 +329,13 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case group.FieldDuplicateOperationID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field duplicate_operation_id", values[i])
+			} else if value.Valid {
+				_m.DuplicateOperationID = new(string)
+				*_m.DuplicateOperationID = value.String
 			}
 		case group.FieldPlatform:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -454,6 +465,13 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.VideoPrice1080p = new(float64)
 				*_m.VideoPrice1080p = value.Float64
+			}
+		case group.FieldWebSearchPricePerCall:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field web_search_price_per_call", values[i])
+			} else if value.Valid {
+				_m.WebSearchPricePerCall = new(float64)
+				*_m.WebSearchPricePerCall = value.Float64
 			}
 		case group.FieldClaudeCodeOnly:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -671,6 +689,11 @@ func (_m *Group) String() string {
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
 	builder.WriteString(", ")
+	if v := _m.DuplicateOperationID; v != nil {
+		builder.WriteString("duplicate_operation_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
 	builder.WriteString("platform=")
 	builder.WriteString(_m.Platform)
 	builder.WriteString(", ")
@@ -746,6 +769,11 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	if v := _m.VideoPrice1080p; v != nil {
 		builder.WriteString("video_price_1080p=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.WebSearchPricePerCall; v != nil {
+		builder.WriteString("web_search_price_per_call=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

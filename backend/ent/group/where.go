@@ -115,6 +115,11 @@ func Status(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStatus, v))
 }
 
+// DuplicateOperationID applies equality check predicate on the "duplicate_operation_id" field. It's identical to DuplicateOperationIDEQ.
+func DuplicateOperationID(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
+}
+
 // Platform applies equality check predicate on the "platform" field. It's identical to PlatformEQ.
 func Platform(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPlatform, v))
@@ -213,6 +218,11 @@ func VideoPrice720p(v float64) predicate.Group {
 // VideoPrice1080p applies equality check predicate on the "video_price_1080p" field. It's identical to VideoPrice1080pEQ.
 func VideoPrice1080p(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldVideoPrice1080p, v))
+}
+
+// WebSearchPricePerCall applies equality check predicate on the "web_search_price_per_call" field. It's identical to WebSearchPricePerCallEQ.
+func WebSearchPricePerCall(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldWebSearchPricePerCall, v))
 }
 
 // ClaudeCodeOnly applies equality check predicate on the "claude_code_only" field. It's identical to ClaudeCodeOnlyEQ.
@@ -833,6 +843,81 @@ func StatusEqualFold(v string) predicate.Group {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// DuplicateOperationIDEQ applies the EQ predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDNEQ applies the NEQ predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDIn applies the In predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDuplicateOperationID, vs...))
+}
+
+// DuplicateOperationIDNotIn applies the NotIn predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDuplicateOperationID, vs...))
+}
+
+// DuplicateOperationIDGT applies the GT predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDGTE applies the GTE predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDLT applies the LT predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDLTE applies the LTE predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDContains applies the Contains predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDHasPrefix applies the HasPrefix predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDHasSuffix applies the HasSuffix predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDIsNil applies the IsNil predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldDuplicateOperationID))
+}
+
+// DuplicateOperationIDNotNil applies the NotNil predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldDuplicateOperationID))
+}
+
+// DuplicateOperationIDEqualFold applies the EqualFold predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldDuplicateOperationID, v))
+}
+
+// DuplicateOperationIDContainsFold applies the ContainsFold predicate on the "duplicate_operation_id" field.
+func DuplicateOperationIDContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldDuplicateOperationID, v))
 }
 
 // PlatformEQ applies the EQ predicate on the "platform" field.
@@ -1653,6 +1738,56 @@ func VideoPrice1080pIsNil() predicate.Group {
 // VideoPrice1080pNotNil applies the NotNil predicate on the "video_price_1080p" field.
 func VideoPrice1080pNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldVideoPrice1080p))
+}
+
+// WebSearchPricePerCallEQ applies the EQ predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldWebSearchPricePerCall, v))
+}
+
+// WebSearchPricePerCallNEQ applies the NEQ predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldWebSearchPricePerCall, v))
+}
+
+// WebSearchPricePerCallIn applies the In predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldWebSearchPricePerCall, vs...))
+}
+
+// WebSearchPricePerCallNotIn applies the NotIn predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldWebSearchPricePerCall, vs...))
+}
+
+// WebSearchPricePerCallGT applies the GT predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldWebSearchPricePerCall, v))
+}
+
+// WebSearchPricePerCallGTE applies the GTE predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldWebSearchPricePerCall, v))
+}
+
+// WebSearchPricePerCallLT applies the LT predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldWebSearchPricePerCall, v))
+}
+
+// WebSearchPricePerCallLTE applies the LTE predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldWebSearchPricePerCall, v))
+}
+
+// WebSearchPricePerCallIsNil applies the IsNil predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldWebSearchPricePerCall))
+}
+
+// WebSearchPricePerCallNotNil applies the NotNil predicate on the "web_search_price_per_call" field.
+func WebSearchPricePerCallNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldWebSearchPricePerCall))
 }
 
 // ClaudeCodeOnlyEQ applies the EQ predicate on the "claude_code_only" field.

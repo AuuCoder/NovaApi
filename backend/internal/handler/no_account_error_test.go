@@ -4,6 +4,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -114,6 +115,33 @@ func TestClassifyNoAccountError_ModelNotSupported_Returns404(t *testing.T) {
 	require.Equal(t, int64(42), *fd.calls[0].GroupID)
 }
 
+func TestClassifyOpenAICompatibleNoAccountError_GrokUsesGrokPlatform(t *testing.T) {
+	c := newTestGinContextWithRequest()
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}
+	groupID := int64(43)
+	apiKey := &service.APIKey{
+		GroupID: &groupID,
+		Group: &service.Group{
+			ID:       groupID,
+			Platform: service.PlatformGrok,
+		},
+	}
+
+	cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, fd, apiKey, "grok-4.5", "grok-4.5")
+
+	require.Equal(t, http.StatusNotFound, cls.Status)
+	require.Equal(t, "model_not_found", cls.ErrType)
+	require.True(t, cls.ModelNotFound)
+	require.Len(t, fd.calls, 1)
+	require.Equal(t, service.PlatformGrok, fd.calls[0].Platform)
+
+	logErr := openAICompatibleSelectionErrorForLog(
+		fmt.Errorf("no available OpenAI accounts supporting model: grok-4.5"),
+		service.PlatformGrok,
+	)
+	require.EqualError(t, logErr, "no available Grok accounts supporting model: grok-4.5")
+}
+
 func TestClassifyNoAccountError_HasModelSupport_KeepsRoutingMessageGenerationToCaller(t *testing.T) {
 	c := newTestGinContextWithRequest()
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}}
@@ -124,6 +152,20 @@ func TestClassifyNoAccountError_HasModelSupport_KeepsRoutingMessageGenerationToC
 	require.Equal(t, http.StatusServiceUnavailable, cls.Status, "model exists somewhere — caller stays on 503")
 	require.Equal(t, "api_error", cls.ErrType)
 	require.False(t, cls.ModelNotFound)
+}
+
+func TestClassifyNoAccountError_ModelSupportedOnlyByRateLimitedAccount_Returns503(t *testing.T) {
+	c := newTestGinContextWithRequest()
+	// The diagnoser's configured-state lookup still sees the model-supporting
+	// account even though normal scheduling has excluded it during cooldown.
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}}
+	apiKey := &service.APIKey{GroupID: ptrInt64(7)}
+
+	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "claude-opus-4-8", "claude-opus-4-8", service.PlatformAnthropic)
+
+	require.Equal(t, http.StatusServiceUnavailable, cls.Status)
+	require.Equal(t, "api_error", cls.ErrType)
+	require.False(t, cls.ModelNotFound, "temporary account cooldown must remain retryable")
 }
 
 func TestClassifyNoAccountError_NoAccountsInPool_Stays503(t *testing.T) {

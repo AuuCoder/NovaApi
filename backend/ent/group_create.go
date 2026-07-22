@@ -189,6 +189,20 @@ func (_c *GroupCreate) SetNillableStatus(v *string) *GroupCreate {
 	return _c
 }
 
+// SetDuplicateOperationID sets the "duplicate_operation_id" field.
+func (_c *GroupCreate) SetDuplicateOperationID(v string) *GroupCreate {
+	_c.mutation.SetDuplicateOperationID(v)
+	return _c
+}
+
+// SetNillableDuplicateOperationID sets the "duplicate_operation_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDuplicateOperationID(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetDuplicateOperationID(*v)
+	}
+	return _c
+}
+
 // SetPlatform sets the "platform" field.
 func (_c *GroupCreate) SetPlatform(v string) *GroupCreate {
 	_c.mutation.SetPlatform(v)
@@ -465,6 +479,20 @@ func (_c *GroupCreate) SetVideoPrice1080p(v float64) *GroupCreate {
 func (_c *GroupCreate) SetNillableVideoPrice1080p(v *float64) *GroupCreate {
 	if v != nil {
 		_c.SetVideoPrice1080p(*v)
+	}
+	return _c
+}
+
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (_c *GroupCreate) SetWebSearchPricePerCall(v float64) *GroupCreate {
+	_c.mutation.SetWebSearchPricePerCall(v)
+	return _c
+}
+
+// SetNillableWebSearchPricePerCall sets the "web_search_price_per_call" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableWebSearchPricePerCall(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetWebSearchPricePerCall(*v)
 	}
 	return _c
 }
@@ -979,6 +1007,11 @@ func (_c *GroupCreate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.DuplicateOperationID(); ok {
+		if err := group.DuplicateOperationIDValidator(v); err != nil {
+			return &ValidationError{Name: "duplicate_operation_id", err: fmt.Errorf(`ent: validator failed for field "Group.duplicate_operation_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Platform(); !ok {
 		return &ValidationError{Name: "platform", err: errors.New(`ent: missing required field "Group.platform"`)}
 	}
@@ -1138,6 +1171,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldStatus, field.TypeString, value)
 		_node.Status = value
 	}
+	if value, ok := _c.mutation.DuplicateOperationID(); ok {
+		_spec.SetField(group.FieldDuplicateOperationID, field.TypeString, value)
+		_node.DuplicateOperationID = &value
+	}
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
 		_node.Platform = value
@@ -1217,6 +1254,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.VideoPrice1080p(); ok {
 		_spec.SetField(group.FieldVideoPrice1080p, field.TypeFloat64, value)
 		_node.VideoPrice1080p = &value
+	}
+	if value, ok := _c.mutation.WebSearchPricePerCall(); ok {
+		_spec.SetField(group.FieldWebSearchPricePerCall, field.TypeFloat64, value)
+		_node.WebSearchPricePerCall = &value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1968,6 +2009,30 @@ func (u *GroupUpsert) ClearVideoPrice1080p() *GroupUpsert {
 	return u
 }
 
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (u *GroupUpsert) SetWebSearchPricePerCall(v float64) *GroupUpsert {
+	u.Set(group.FieldWebSearchPricePerCall, v)
+	return u
+}
+
+// UpdateWebSearchPricePerCall sets the "web_search_price_per_call" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateWebSearchPricePerCall() *GroupUpsert {
+	u.SetExcluded(group.FieldWebSearchPricePerCall)
+	return u
+}
+
+// AddWebSearchPricePerCall adds v to the "web_search_price_per_call" field.
+func (u *GroupUpsert) AddWebSearchPricePerCall(v float64) *GroupUpsert {
+	u.Add(group.FieldWebSearchPricePerCall, v)
+	return u
+}
+
+// ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
+func (u *GroupUpsert) ClearWebSearchPricePerCall() *GroupUpsert {
+	u.SetNull(group.FieldWebSearchPricePerCall)
+	return u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (u *GroupUpsert) SetClaudeCodeOnly(v bool) *GroupUpsert {
 	u.Set(group.FieldClaudeCodeOnly, v)
@@ -2203,6 +2268,9 @@ func (u *GroupUpsertOne) UpdateNewValues() *GroupUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(group.FieldCreatedAt)
+		}
+		if _, exists := u.create.mutation.DuplicateOperationID(); exists {
+			s.SetIgnore(group.FieldDuplicateOperationID)
 		}
 	}))
 	return u
@@ -2858,6 +2926,34 @@ func (u *GroupUpsertOne) ClearVideoPrice1080p() *GroupUpsertOne {
 	})
 }
 
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (u *GroupUpsertOne) SetWebSearchPricePerCall(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetWebSearchPricePerCall(v)
+	})
+}
+
+// AddWebSearchPricePerCall adds v to the "web_search_price_per_call" field.
+func (u *GroupUpsertOne) AddWebSearchPricePerCall(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddWebSearchPricePerCall(v)
+	})
+}
+
+// UpdateWebSearchPricePerCall sets the "web_search_price_per_call" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateWebSearchPricePerCall() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateWebSearchPricePerCall()
+	})
+}
+
+// ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
+func (u *GroupUpsertOne) ClearWebSearchPricePerCall() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearWebSearchPricePerCall()
+	})
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (u *GroupUpsertOne) SetClaudeCodeOnly(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3295,6 +3391,9 @@ func (u *GroupUpsertBulk) UpdateNewValues() *GroupUpsertBulk {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(group.FieldCreatedAt)
+			}
+			if _, exists := b.mutation.DuplicateOperationID(); exists {
+				s.SetIgnore(group.FieldDuplicateOperationID)
 			}
 		}
 	}))
@@ -3948,6 +4047,34 @@ func (u *GroupUpsertBulk) UpdateVideoPrice1080p() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearVideoPrice1080p() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearVideoPrice1080p()
+	})
+}
+
+// SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
+func (u *GroupUpsertBulk) SetWebSearchPricePerCall(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetWebSearchPricePerCall(v)
+	})
+}
+
+// AddWebSearchPricePerCall adds v to the "web_search_price_per_call" field.
+func (u *GroupUpsertBulk) AddWebSearchPricePerCall(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddWebSearchPricePerCall(v)
+	})
+}
+
+// UpdateWebSearchPricePerCall sets the "web_search_price_per_call" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateWebSearchPricePerCall() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateWebSearchPricePerCall()
+	})
+}
+
+// ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
+func (u *GroupUpsertBulk) ClearWebSearchPricePerCall() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearWebSearchPricePerCall()
 	})
 }
 

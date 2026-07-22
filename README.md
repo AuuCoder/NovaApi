@@ -2,7 +2,7 @@
 
 基于 [Sub2API](https://github.com/Wei-Shaw/sub2api) 的多账号 AI API 网关定制版，重点补充 Grok CLI 请求兼容、Grok 账号统一管理，以及不依赖 ChatGPT2API 的 Grok Web 生图能力。
 
-当前定制基线为 Sub2API `v0.1.149`。上游版本升级应在独立分支完成，并重新验证 Grok OAuth、调度缓存、图片 Bridge 与数据库迁移。
+当前定制基线为 Sub2API `v0.1.162`。上游版本升级应在独立分支完成，并重新验证 Grok OAuth、调度缓存、图片 Bridge 与数据库迁移。
 
 ## 核心能力
 

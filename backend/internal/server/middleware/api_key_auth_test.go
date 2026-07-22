@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +20,35 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAPIKeyAuthRejectsOversizedCredentialsBeforeLookup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var calls atomic.Int32
+	repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		calls.Add(1)
+		return nil, service.ErrAPIKeyNotFound
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+
+	for _, headers := range []map[string]string{
+		{"x-api-key": strings.Repeat("x", service.MaxAPIKeyCredentialBytes+1)},
+		{"Authorization": "Bearer " + strings.Repeat("x", service.MaxAPIKeyCredentialBytes+1)},
+		{"Authorization": strings.Repeat("x", maxAPIKeyAuthorizationHeaderBytes+1)},
+	} {
+		r := gin.New()
+		r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, cfg)))
+		r.GET("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		for name, value := range headers {
+			req.Header.Set(name, value)
+		}
+		r.ServeHTTP(w, req)
+		require.Equal(t, http.StatusUnauthorized, w.Code)
+	}
+	require.Zero(t, calls.Load())
+}
 
 func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -58,7 +89,7 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 		},
 	}
 
-	t.Run("standard_mode_needs_maintenance_does_not_block_request", func(t *testing.T) {
+	t.Run("standard_mode_completes_maintenance_before_request", func(t *testing.T) {
 		cfg := &config.Config{RunMode: config.RunModeStandard}
 		cfg.SubscriptionMaintenance.WorkerCount = 1
 		cfg.SubscriptionMaintenance.QueueSize = 1
@@ -67,16 +98,22 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 
 		past := time.Now().Add(-48 * time.Hour)
 		sub := &service.UserSubscription{
-			ID:               55,
-			UserID:           user.ID,
-			GroupID:          group.ID,
-			Status:           service.SubscriptionStatusActive,
-			ExpiresAt:        time.Now().Add(24 * time.Hour),
-			DailyWindowStart: &past,
-			DailyUsageUSD:    0,
+			ID:                 55,
+			UserID:             user.ID,
+			GroupID:            group.ID,
+			Status:             service.SubscriptionStatusActive,
+			ExpiresAt:          time.Now().Add(24 * time.Hour),
+			DailyWindowStart:   &past,
+			WeeklyWindowStart:  &past,
+			MonthlyWindowStart: &past,
+			DailyUsageUSD:      0,
 		}
 		maintenanceCalled := make(chan struct{}, 1)
 		subscriptionRepo := &stubUserSubscriptionRepo{
+			getByID: func(ctx context.Context, id int64) (*service.UserSubscription, error) {
+				clone := *sub
+				return &clone, nil
+			},
 			getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 				clone := *sub
 				return &clone, nil
@@ -84,11 +121,19 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 			updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil },
 			activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil },
 			resetDaily: func(ctx context.Context, id int64, start time.Time) error {
+				sub.DailyWindowStart = &start
+				sub.DailyUsageUSD = 0
 				maintenanceCalled <- struct{}{}
 				return nil
 			},
-			resetWeekly:  func(ctx context.Context, id int64, start time.Time) error { return nil },
-			resetMonthly: func(ctx context.Context, id int64, start time.Time) error { return nil },
+			resetWeekly: func(ctx context.Context, id int64, start time.Time) error {
+				sub.WeeklyWindowStart = &start
+				return nil
+			},
+			resetMonthly: func(ctx context.Context, id int64, start time.Time) error {
+				sub.MonthlyWindowStart = &start
+				return nil
+			},
 		}
 		subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
 		t.Cleanup(subscriptionService.Stop)
@@ -105,8 +150,55 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 		case <-maintenanceCalled:
 			// ok
 		case <-time.After(time.Second):
-			t.Fatalf("expected maintenance to be scheduled")
+			t.Fatalf("expected maintenance to complete before response")
 		}
+	})
+
+	t.Run("standard_mode_revalidates_cas_loser_from_database", func(t *testing.T) {
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+
+		past := time.Now().Add(-48 * time.Hour)
+		current := time.Now()
+		stale := &service.UserSubscription{
+			ID:                 56,
+			UserID:             user.ID,
+			GroupID:            group.ID,
+			Status:             service.SubscriptionStatusActive,
+			ExpiresAt:          current.Add(24 * time.Hour),
+			DailyWindowStart:   &past,
+			WeeklyWindowStart:  &past,
+			MonthlyWindowStart: &past,
+			DailyUsageUSD:      10,
+		}
+		fresh := *stale
+		fresh.DailyWindowStart = &current
+		fresh.WeeklyWindowStart = &current
+		fresh.MonthlyWindowStart = &current
+		fresh.DailyUsageUSD = 2
+
+		subscriptionRepo := &stubUserSubscriptionRepo{
+			getActive: func(context.Context, int64, int64) (*service.UserSubscription, error) {
+				clone := *stale
+				return &clone, nil
+			},
+			getByID: func(context.Context, int64) (*service.UserSubscription, error) {
+				clone := fresh
+				return &clone, nil
+			},
+			resetDaily:   func(context.Context, int64, time.Time) error { return nil },
+			resetWeekly:  func(context.Context, int64, time.Time) error { return nil },
+			resetMonthly: func(context.Context, int64, time.Time) error { return nil },
+		}
+		subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+		router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		req.Header.Set("x-api-key", apiKey.Key)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusTooManyRequests, w.Code)
 	})
 
 	t.Run("simple_mode_bypasses_quota_check", func(t *testing.T) {
@@ -222,6 +314,11 @@ func TestAPIKeyAuthSetsGroupContext(t *testing.T) {
 	router.GET("/t", func(c *gin.Context) {
 		groupFromCtx, ok := c.Request.Context().Value(ctxkey.Group).(*service.Group)
 		if !ok || groupFromCtx == nil || groupFromCtx.ID != group.ID {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false})
+			return
+		}
+		userIDFromCtx, ok := c.Request.Context().Value(ctxkey.UserID).(int64)
+		if !ok || userIDFromCtx != user.ID {
 			c.JSON(http.StatusInternalServerError, gin.H{"ok": false})
 			return
 		}
@@ -370,6 +467,7 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 		wantStatus int
 		wantCode   string
 		wantMarked bool
+		wantReject IngressRejectReason
 	}{
 		{
 			name: "active group passes",
@@ -394,6 +492,7 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 			wantCode:   "GROUP_DISABLED",
 			wantMarked: true,
+			wantReject: IngressRejectGroupDisabled,
 		},
 		{
 			name: "deleted status group is forbidden",
@@ -407,6 +506,7 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 			wantCode:   "GROUP_DELETED",
 			wantMarked: true,
+			wantReject: IngressRejectGroupDeleted,
 		},
 		{
 			name:       "missing group edge is forbidden",
@@ -414,6 +514,7 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 			wantCode:   "GROUP_DELETED",
 			wantMarked: true,
+			wantReject: IngressRejectGroupDeleted,
 		},
 	}
 
@@ -442,9 +543,12 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 			router := gin.New()
 			var markedBusinessLimited bool
 			var businessLimitedReason string
+			var rejectReason IngressRejectReason
+			var rejected bool
 			router.Use(func(c *gin.Context) {
 				c.Next()
 				markedBusinessLimited = service.HasOpsClientBusinessLimited(c)
+				rejectReason, rejected = GetIngressRejectReason(c)
 				if v, ok := c.Get(service.OpsClientBusinessLimitedReasonKey); ok {
 					businessLimitedReason, _ = v.(string)
 				}
@@ -464,9 +568,117 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 				require.Contains(t, w.Body.String(), tt.wantCode)
 			}
 			require.Equal(t, tt.wantMarked, markedBusinessLimited)
+			require.Equal(t, tt.wantReject != "", rejected)
+			require.Equal(t, tt.wantReject, rejectReason)
 			if tt.wantMarked {
 				require.Equal(t, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable, businessLimitedReason)
 			}
+		})
+	}
+}
+
+func TestAPIKeyAuthMarksOnlyExpectedIngressRejections(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name       string
+		path       string
+		key        string
+		authHeader string
+		repoErr    error
+		wantStatus int
+		wantCode   string
+		wantReason IngressRejectReason
+	}{
+		{
+			name:       "query key deprecated",
+			path:       "/t?key=legacy",
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "api_key_in_query_deprecated",
+			wantReason: IngressRejectQueryAPIKeyDeprecated,
+		},
+		{
+			name:       "missing key",
+			path:       "/t",
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "API_KEY_REQUIRED",
+			wantReason: IngressRejectAPIKeyRequired,
+		},
+		{
+			name:       "malformed authorization",
+			path:       "/t",
+			authHeader: "Basic not-a-bearer-key",
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "API_KEY_REQUIRED",
+			wantReason: IngressRejectInvalidAPIKey,
+		},
+		{
+			name:       "oversized key",
+			path:       "/t",
+			key:        strings.Repeat("x", service.MaxAPIKeyCredentialBytes+1),
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "INVALID_API_KEY",
+			wantReason: IngressRejectInvalidAPIKey,
+		},
+		{
+			name:       "invalid key",
+			path:       "/t",
+			key:        "invalid",
+			repoErr:    service.ErrAPIKeyNotFound,
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   "INVALID_API_KEY",
+			wantReason: IngressRejectInvalidAPIKey,
+		},
+		{
+			name:       "repository failure remains operational error",
+			path:       "/t",
+			key:        "valid-shape",
+			repoErr:    errors.New("database unavailable"),
+			wantStatus: http.StatusInternalServerError,
+			wantCode:   "INTERNAL_ERROR",
+		},
+		{
+			name:       "auth lookup bulkhead rejection is an admission rejection",
+			path:       "/t",
+			key:        "valid-shape",
+			repoErr:    service.ErrAPIKeyAuthOverloaded,
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "API_KEY_AUTH_OVERLOADED",
+			wantReason: IngressRejectAPIKeyAuthOverloaded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+				return nil, tt.repoErr
+			}}
+			cfg := &config.Config{RunMode: config.RunModeSimple}
+			apiKeyService := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+			router := gin.New()
+			var reason IngressRejectReason
+			var rejected bool
+			router.Use(func(c *gin.Context) {
+				c.Next()
+				reason, rejected = GetIngressRejectReason(c)
+			})
+			router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+			router.GET("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			if tt.key != "" {
+				req.Header.Set("x-api-key", tt.key)
+			}
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
+			}
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, tt.wantStatus, w.Code)
+			require.Contains(t, w.Body.String(), tt.wantCode)
+			require.Equal(t, tt.wantReason != "", rejected)
+			require.Equal(t, tt.wantReason, reason)
 		})
 	}
 }
@@ -620,9 +832,12 @@ func TestRequireGroupAssignmentMarksUngroupedKeyBusinessLimited(t *testing.T) {
 	router := gin.New()
 	var markedBusinessLimited bool
 	var businessLimitedReason string
+	var rejectReason IngressRejectReason
+	var rejected bool
 	router.Use(func(c *gin.Context) {
 		c.Next()
 		markedBusinessLimited = service.HasOpsClientBusinessLimited(c)
+		rejectReason, rejected = GetIngressRejectReason(c)
 		if v, ok := c.Get(service.OpsClientBusinessLimitedReasonKey); ok {
 			businessLimitedReason, _ = v.(string)
 		}
@@ -642,11 +857,13 @@ func TestRequireGroupAssignmentMarksUngroupedKeyBusinessLimited(t *testing.T) {
 
 	require.Equal(t, http.StatusForbidden, w.Code)
 	require.Contains(t, w.Body.String(), "not assigned to any group")
+	require.True(t, rejected)
+	require.Equal(t, IngressRejectGroupUnassigned, rejectReason)
 	require.True(t, markedBusinessLimited)
 	require.Equal(t, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnassigned, businessLimitedReason)
 }
 
-func TestAPIKeyAuthIPRestrictionDoesNotTrustForwardedClientIPByDefault(t *testing.T) {
+func TestAPIKeyAuthIPRestrictionUsesTrustedPathWhenSwitchDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	user := &service.User{
@@ -676,6 +893,7 @@ func TestAPIKeyAuthIPRestrictionDoesNotTrustForwardedClientIPByDefault(t *testin
 	}
 
 	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.SetTrustForwardedIPForAPIKeyACL(false)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies(nil))
@@ -756,7 +974,7 @@ func TestAPIKeyAuthIPRestrictionIncludesClientIPForBlacklistDenial(t *testing.T)
 	requireAPIKeyAuthError(t, w, "ACCESS_DENIED", "Access denied. Your IP is 9.9.9.9")
 }
 
-func TestAPIKeyAuthIPRestrictionCanTrustForwardedClientIPForReverseProxy(t *testing.T) {
+func TestAPIKeyAuthIPRestrictionUsesConfiguredTrustedProxy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	user := &service.User{
@@ -786,10 +1004,10 @@ func TestAPIKeyAuthIPRestrictionCanTrustForwardedClientIPForReverseProxy(t *test
 	}
 
 	cfg := &config.Config{RunMode: config.RunModeSimple}
-	cfg.SetTrustForwardedIPForAPIKeyACL(true)
+	cfg.SetTrustForwardedIPForAPIKeyACL(false)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := gin.New()
-	require.NoError(t, router.SetTrustedProxies(nil))
+	require.NoError(t, router.SetTrustedProxies([]string{"9.9.9.9"}))
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
 	router.GET("/t", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -837,10 +1055,10 @@ func TestAPIKeyAuthIPRestrictionUsesForwardedClientIPInDenialWhenTrusted(t *test
 	}
 
 	cfg := &config.Config{RunMode: config.RunModeSimple}
-	cfg.SetTrustForwardedIPForAPIKeyACL(true)
+	cfg.SetTrustForwardedIPForAPIKeyACL(false)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := gin.New()
-	require.NoError(t, router.SetTrustedProxies(nil))
+	require.NoError(t, router.SetTrustedProxies([]string{"9.9.9.9"}))
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
 	router.GET("/t", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -1000,6 +1218,129 @@ func TestAPIKeyAuthTouchesLastUsedInStandardMode(t *testing.T) {
 	require.Equal(t, 1, touchCalls)
 }
 
+func TestAPIKeyAuthBillingInfoSkipsBillingAndSideEffects(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	group := &service.Group{
+		ID:               42,
+		Name:             "subscription",
+		Status:           service.StatusActive,
+		Hydrated:         true,
+		SubscriptionType: service.SubscriptionTypeSubscription,
+	}
+	user := &service.User{
+		ID:          7,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     0,
+		Concurrency: 3,
+	}
+	expiredAt := time.Now().Add(-time.Hour)
+	apiKey := &service.APIKey{
+		ID:        100,
+		UserID:    user.ID,
+		Key:       "billing-info-auth-only",
+		Status:    service.StatusAPIKeyQuotaExhausted,
+		User:      user,
+		GroupID:   &group.ID,
+		Group:     group,
+		Quota:     1,
+		QuotaUsed: 1,
+		ExpiresAt: &expiredAt,
+	}
+
+	touchCalls := 0
+	subscriptionCalls := 0
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(context.Context, string) (*service.APIKey, error) {
+			clone := *apiKey
+			return &clone, nil
+		},
+		updateLastUsed: func(context.Context, int64, time.Time) error {
+			touchCalls++
+			return nil
+		},
+	}
+	subscriptionRepo := &stubUserSubscriptionRepo{
+		getActive: func(context.Context, int64, int64) (*service.UserSubscription, error) {
+			subscriptionCalls++
+			return nil, service.ErrSubscriptionNotFound
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+	t.Cleanup(subscriptionService.Stop)
+	router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Zero(t, subscriptionCalls)
+	require.Zero(t, touchCalls)
+}
+
+func TestAPIKeyAuthBillingInfoSkipsLastUsedInSimpleMode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive}
+	apiKey := &service.APIKey{ID: 100, UserID: user.ID, Key: "billing-info-simple", Status: service.StatusActive, User: user}
+	touchCalls := 0
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(context.Context, string) (*service.APIKey, error) {
+			clone := *apiKey
+			return &clone, nil
+		},
+		updateLastUsed: func(context.Context, int64, time.Time) error {
+			touchCalls++
+			return nil
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	router := newAuthTestRouter(apiKeyService, nil, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Zero(t, touchCalls)
+}
+
+func TestAPIKeyAuthUsageStillTouchesLastUsed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive, Balance: 10}
+	apiKey := &service.APIKey{ID: 100, UserID: user.ID, Key: "usage-touch", Status: service.StatusActive, User: user}
+	touchCalls := 0
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(context.Context, string) (*service.APIKey, error) {
+			clone := *apiKey
+			return &clone, nil
+		},
+		updateLastUsed: func(context.Context, int64, time.Time) error {
+			touchCalls++
+			return nil
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	router := newAuthTestRouter(apiKeyService, nil, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/usage", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, 1, touchCalls)
+}
+
 func TestAPIKeyAuthAllowsBalanceBelowMinimumReserve(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1086,12 +1427,89 @@ func TestAPIKeyAuthRejectsExhaustedBalance(t *testing.T) {
 	requireAPIKeyAuthError(t, w, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 }
 
+func TestAPIKeyAuthOpenAIQuotaErrorFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{ID: 11, Role: service.RoleUser, Status: service.StatusActive, Balance: 10}
+	group := &service.Group{ID: 8, Platform: service.PlatformOpenAI, Status: service.StatusActive}
+	apiKey := &service.APIKey{
+		ID: 105, UserID: user.ID, Key: "openai-quota-exhausted", Status: service.StatusAPIKeyQuotaExhausted,
+		User: user, Group: group, GroupID: &group.ID,
+	}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		clone := *apiKey
+		userClone := *user
+		clone.User = &userClone
+		return &clone, nil
+	}}
+
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	router := newAuthTestRouter(service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusTooManyRequests, w.Code)
+	var response struct {
+		Error struct {
+			Message string  `json:"message"`
+			Type    string  `json:"type"`
+			Param   *string `json:"param"`
+			Code    string  `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, "API key 额度已用完", response.Error.Message)
+	require.Equal(t, "insufficient_quota", response.Error.Type)
+	require.Nil(t, response.Error.Param)
+	require.Equal(t, "insufficient_quota", response.Error.Code)
+}
+
+func TestAPIKeyAuthQuotaErrorKeepsLegacyFormatOutsideResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{ID: 11, Role: service.RoleUser, Status: service.StatusActive, Balance: 10}
+	group := &service.Group{ID: 8, Platform: service.PlatformOpenAI, Status: service.StatusActive}
+	apiKey := &service.APIKey{
+		ID: 105, UserID: user.ID, Key: "openai-quota-exhausted", Status: service.StatusAPIKeyQuotaExhausted,
+		User: user, Group: group, GroupID: &group.ID,
+	}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		clone := *apiKey
+		userClone := *user
+		clone.User = &userClone
+		return &clone, nil
+	}}
+
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	router := newAuthTestRouter(service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusTooManyRequests, w.Code)
+	requireAPIKeyAuthError(t, w, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
+}
+
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
-	router.GET("/t", func(c *gin.Context) {
+	ok := func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
-	})
+	}
+	router.GET("/t", ok)
+	router.POST("/v1/responses", ok)
+	router.POST("/v1/messages", ok)
+	router.GET("/v1/usage", ok)
+	router.GET("/v1/sub2api/billing", ok)
 	return router
 }
 
@@ -1210,6 +1628,7 @@ func (r *stubApiKeyRepo) GetRateLimitData(ctx context.Context, id int64) (*servi
 }
 
 type stubUserSubscriptionRepo struct {
+	getByID        func(ctx context.Context, id int64) (*service.UserSubscription, error)
 	getActive      func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error)
 	updateStatus   func(ctx context.Context, subscriptionID int64, status string) error
 	activateWindow func(ctx context.Context, id int64, start time.Time) error
@@ -1258,6 +1677,9 @@ func (r *stubUserSubscriptionRepo) Create(ctx context.Context, sub *service.User
 }
 
 func (r *stubUserSubscriptionRepo) GetByID(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	if r.getByID != nil {
+		return r.getByID(ctx, id)
+	}
 	return nil, errors.New("not implemented")
 }
 
@@ -1334,21 +1756,25 @@ func (r *stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64
 	return errors.New("not implemented")
 }
 
-func (r *stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (r *stubUserSubscriptionRepo) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, _ *time.Time, newWindowStart time.Time) error {
 	if r.resetDaily != nil {
 		return r.resetDaily(ctx, id, newWindowStart)
 	}
 	return errors.New("not implemented")
 }
 
-func (r *stubUserSubscriptionRepo) ResetWeeklyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (r *stubUserSubscriptionRepo) ResetWeeklyUsage(ctx context.Context, id int64, _ *time.Time, newWindowStart time.Time) error {
 	if r.resetWeekly != nil {
 		return r.resetWeekly(ctx, id, newWindowStart)
 	}
 	return errors.New("not implemented")
 }
 
-func (r *stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (r *stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64, _ *time.Time, newWindowStart time.Time) error {
 	if r.resetMonthly != nil {
 		return r.resetMonthly(ctx, id, newWindowStart)
 	}

@@ -120,6 +120,8 @@ type Group struct {
 	VideoPrice480P     *float64 `json:"video_price_480p"`
 	VideoPrice720P     *float64 `json:"video_price_720p"`
 	VideoPrice1080P    *float64 `json:"video_price_1080p"`
+	// Codex alpha/search 网页搜索单次价格（USD/次）；null 表示使用默认价 0.01
+	WebSearchPricePerCall *float64 `json:"web_search_price_per_call"`
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
@@ -480,13 +482,14 @@ type UsageLog struct {
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
 
-	InputCost         float64 `json:"input_cost"`
-	OutputCost        float64 `json:"output_cost"`
-	CacheCreationCost float64 `json:"cache_creation_cost"`
-	CacheReadCost     float64 `json:"cache_read_cost"`
-	TotalCost         float64 `json:"total_cost"`
-	ActualCost        float64 `json:"actual_cost"`
-	RateMultiplier    float64 `json:"rate_multiplier"`
+	InputCost                 float64 `json:"input_cost"`
+	OutputCost                float64 `json:"output_cost"`
+	CacheCreationCost         float64 `json:"cache_creation_cost"`
+	CacheReadCost             float64 `json:"cache_read_cost"`
+	TotalCost                 float64 `json:"total_cost"`
+	ActualCost                float64 `json:"actual_cost"`
+	RateMultiplier            float64 `json:"rate_multiplier"`
+	LongContextBillingApplied bool    `json:"long_context_billing_applied"`
 
 	BillingType  int8   `json:"billing_type"`
 	RequestType  string `json:"request_type"`
@@ -500,6 +503,8 @@ type UsageLog struct {
 	ImageSize          *string        `json:"image_size"`
 	ImageInputSize     *string        `json:"image_input_size"`
 	ImageOutputSize    *string        `json:"image_output_size"`
+	ImageInputTokens   int            `json:"image_input_tokens"`
+	ImageInputCost     float64        `json:"image_input_cost"`
 	ImageOutputTokens  int            `json:"image_output_tokens"`
 	ImageOutputCost    float64        `json:"image_output_cost"`
 	ImageSizeSource    *string        `json:"image_size_source"`

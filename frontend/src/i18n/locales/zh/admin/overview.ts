@@ -16,6 +16,7 @@ export default {
       totalRequests: '总请求数',
       todayCost: '今日消费',
       totalCost: '总消费',
+      newUsersToday: '今日新增用户',
       actual: '实际',
       standard: '标准',
       accountCost: '成本',
@@ -27,6 +28,10 @@ export default {
       performance: '性能指标',
       avgResponse: '平均响应',
       averageTime: '平均时间',
+      active: '活跃',
+      ok: '正常',
+      err: '错误',
+      create: '创建',
       timeRange: '时间范围',
       granularity: '粒度',
       day: '按天',
@@ -36,6 +41,7 @@ export default {
       metricTokens: '按 Token',
       metricActualCost: '按实际消费',
       tokenUsageTrend: 'Token 使用趋势',
+      userUsageTrend: '用户使用趋势（Top 12）',
       noDataAvailable: '暂无数据',
       model: '模型',
       group: '分组',
@@ -95,6 +101,19 @@ export default {
         testSuccess: 'S3 连接测试成功',
         testFailed: 'S3 连接测试失败',
         saved: 'S3 配置已保存'
+      },
+      imageStorage: {
+        title: '异步生图对象存储',
+        description: '开启后，异步生图接口可用，生成结果转存到对象存储，只把短链接写入 Redis。与备份共用同一套 S3 客户端，保存后立即生效，无需重启。',
+        enabled: '启用异步生图',
+        reuseBackupS3: '复用上方备份的 S3 配置（只用不同的存储桶/前缀）',
+        bucket: '存储桶',
+        bucketInherited: '留空则沿用备份存储桶',
+        prefix: 'Key 前缀',
+        publicBaseUrl: '公开访问域名',
+        publicBaseUrlPlaceholder: '留空则返回预签名临时链接',
+        presignExpiryHours: '预签名链接有效期（小时）',
+        saved: '异步生图对象存储配置已保存'
       },
       schedule: {
         title: '定时备份',
@@ -412,6 +431,25 @@ export default {
       title: '用户管理',
       description: '管理用户账户和权限',
       createUser: '创建用户',
+      bulkLimits: {
+        action: '批量设置限制（{count}）',
+        title: '批量设置用户限制',
+        selectedCount: '已选择 {count} 个用户',
+        selectionLimit: '一次最多选择 {max} 个用户。',
+        selectUser: '选择 {email}',
+        enableConcurrency: '修改并发数',
+        enableRPMLimit: '修改 RPM 限制',
+        unlimited: '不限制',
+        nonNegativeInteger: '请输入非负整数。',
+        apply: '应用限制',
+        applying: '应用中...',
+        concurrencyValue: '并发数：{value}',
+        rpmValue: 'RPM：{value}',
+        rpmUnlimitedValue: 'RPM：不限制',
+        confirm: '确定覆盖 {count} 个用户的限制吗？\n{fields}',
+        success: '已更新 {count} 个用户的限制',
+        failed: '批量更新用户限制失败'
+      },
       editUser: '编辑用户',
       deleteUser: '删除用户',
       deleteConfirmMessage: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
@@ -734,6 +772,10 @@ export default {
       createGroup: '创建分组',
       editGroup: '编辑分组',
       deleteGroup: '删除分组',
+      duplicate: '复制',
+      duplicating: '复制中',
+      duplicateSuccess: '分组已复制为「{name}」，已默认停用，请确认配置后再启用',
+      duplicateFailed: '复制分组失败',
       sortOrder: '排序',
       columnSettings: '列设置',
       sortOrderHint: '拖拽分组调整显示顺序，排在前面的分组会优先显示',
@@ -744,6 +786,7 @@ export default {
         "确定要删除订阅分组 '{name}' 吗？此操作会让所有绑定此订阅的用户的 API Key 失效，并删除所有相关的订阅记录。此操作无法撤销。",
       columns: {
         name: '名称',
+        id: 'ID',
         platform: '平台',
         rateMultiplier: '费率倍数',
         rpmOverride: 'RPM 覆盖',
@@ -930,6 +973,13 @@ export default {
         finalPricePreview: '最终每秒价格预览',
         notConfigured: '未配置'
       },
+      webSearchPricing: {
+        title: 'Codex 网页搜索计费',
+        pricePerCall: '搜索单次价格（USD/次）',
+        pricePerCallHint:
+          '留空使用默认价 $0.01/次（官方定价 $10/1000 次）；填 0 表示免费。实际扣费会叠加分组费率倍数。',
+        finalPricePreview: '应用当前倍率后的单次价格：{price}'
+      },
       peakRate: {
         enable: '启用高峰倍率',
         peakStart: '高峰开始',
@@ -1006,6 +1056,14 @@ export default {
         selectAccounts: '选择账号',
         noAccounts: '此分组暂无账号',
         loadingAccounts: '加载账号中...',
+      claudeMaxSimulation: {
+        title: 'Claude Max 用量模拟',
+        tooltip:
+          '启用后，对于没有上游缓存写入用量的 Claude 模型，系统会确定性地将 token 映射为少量输入加 1h 缓存创建，同时保持总 token 不变。',
+        enabled: '已启用（模拟 1h 缓存）',
+        disabled: '已禁用',
+        hint: '仅调整用量计费日志中的 token 类别。不会持久化每个请求的映射状态。'
+      },
         removeRule: '删除规则',
         noRules: '暂无路由规则',
         noRulesHint: '添加路由规则以将特定模型请求优先路由到指定账号',

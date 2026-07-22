@@ -38,11 +38,12 @@ type noAccountErrorClassification struct {
 // The classifier intentionally does not consume the original error: the
 // selection layer never tells us *why* the pool came up empty (rate-limited
 // vs. unsupported model are both wrapped as ErrNoAvailableAccounts). Instead
-// we re-check pool composition through DiagnoseModelAvailabilityForPlatform,
-// which only inspects model_mapping configuration and ignores transient
-// state. That guarantees a 404 is only returned when no operator action
-// short of editing the account's model_mapping could make this request
-// succeed.
+// we re-check pool composition through DiagnoseModelAvailabilityForPlatform.
+// Its dedicated database query considers only persistent eligibility
+// (active status + schedulable setting) and model_mapping, bypassing scheduler
+// snapshots and transient filters. That guarantees a 404 is only returned
+// when persistent account/group/model configuration must change before the
+// request can succeed.
 //
 // routingModel is the model name that account selection actually compared
 // against (i.e. after group-level dispatch mapping). displayModel is the
@@ -106,4 +107,32 @@ func classifyNoAccountErrorFromGin(
 		ctx = c.Request.Context()
 	}
 	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
+}
+
+func classifyOpenAICompatibleNoAccountErrorFromGin(
+	c *gin.Context,
+	diag service.ModelAvailabilityDiagnoser,
+	apiKey *service.APIKey,
+	routingModel string,
+	displayModel string,
+) noAccountErrorClassification {
+	return classifyNoAccountErrorFromGin(
+		c,
+		diag,
+		apiKey,
+		routingModel,
+		displayModel,
+		openAICompatibleRequestPlatform(apiKey),
+	)
+}
+
+func openAICompatibleSelectionErrorForLog(err error, platform string) error {
+	if err == nil || platform != service.PlatformGrok {
+		return err
+	}
+	message := strings.ReplaceAll(err.Error(), "OpenAI accounts", "Grok accounts")
+	if message == err.Error() {
+		return err
+	}
+	return fmt.Errorf("%s", message)
 }

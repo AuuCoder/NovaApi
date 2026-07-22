@@ -6,9 +6,16 @@ import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  applyPlanType,
   buildHeaderOverridesObject,
-  getHeaderOverrideTemplate,
-  isHeaderOverridePlatform,
+  buildPlanTypeOptions,
+  isCustomGrokBaseUrl,
+  isHeaderOverrideCapable,
+  GROK_BASE_URL_PRESETS,
+  parseHeaderOverridesJson,
+  planTypeDisplayLabel,
+  readPlanType,
+  serializeHeaderOverrideRows,
   splitHeaderOverridesObject,
   validateHeaderOverrideRows
 } from '../credentialsBuilder'
@@ -91,14 +98,125 @@ describe('applyAntigravityProjectID', () => {
   })
 })
 
-describe('isHeaderOverridePlatform', () => {
-  it('only anthropic and openai are supported', () => {
-    expect(isHeaderOverridePlatform('anthropic')).toBe(true)
-    expect(isHeaderOverridePlatform('openai')).toBe(true)
-    expect(isHeaderOverridePlatform('gemini')).toBe(false)
-    expect(isHeaderOverridePlatform('grok')).toBe(false)
-    expect(isHeaderOverridePlatform('antigravity')).toBe(false)
-    expect(isHeaderOverridePlatform('')).toBe(false)
+describe('isHeaderOverrideCapable', () => {
+  it('anthropic/openai only support apikey accounts', () => {
+    expect(isHeaderOverrideCapable('anthropic', 'apikey')).toBe(true)
+    expect(isHeaderOverrideCapable('openai', 'apikey')).toBe(true)
+    expect(isHeaderOverrideCapable('anthropic', 'oauth')).toBe(false)
+    expect(isHeaderOverrideCapable('openai', 'oauth')).toBe(false)
+  })
+
+  it('grok supports both apikey and oauth accounts', () => {
+    expect(isHeaderOverrideCapable('grok', 'apikey')).toBe(true)
+    expect(isHeaderOverrideCapable('grok', 'oauth')).toBe(true)
+    expect(isHeaderOverrideCapable('grok', 'bedrock')).toBe(false)
+  })
+
+  it('other platforms are not supported', () => {
+    expect(isHeaderOverrideCapable('gemini', 'apikey')).toBe(false)
+    expect(isHeaderOverrideCapable('antigravity', 'apikey')).toBe(false)
+    expect(isHeaderOverrideCapable('', 'apikey')).toBe(false)
+  })
+})
+
+describe('parseHeaderOverridesJson', () => {
+  it('parses a flat object and normalizes values to trimmed strings', () => {
+    expect(
+      parseHeaderOverridesJson('{"User-Agent": " my-client/1.0 ", "x-num": 3, "x-flag": true}')
+    ).toEqual([
+      { name: 'User-Agent', value: 'my-client/1.0' },
+      { name: 'x-flag', value: 'true' },
+      { name: 'x-num', value: '3' }
+    ])
+  })
+
+  it('drops entries with blank names', () => {
+    expect(parseHeaderOverridesJson('{"  ": "v", "x-app": "cli"}')).toEqual([
+      { name: 'x-app', value: 'cli' }
+    ])
+  })
+
+  it('rejects invalid JSON, arrays, primitives and nested values', () => {
+    expect(parseHeaderOverridesJson('not json')).toBeNull()
+    expect(parseHeaderOverridesJson('[1,2]')).toBeNull()
+    expect(parseHeaderOverridesJson('"str"')).toBeNull()
+    expect(parseHeaderOverridesJson('null')).toBeNull()
+    expect(parseHeaderOverridesJson('{"a": {"b": 1}}')).toBeNull()
+    expect(parseHeaderOverridesJson('{"a": null}')).toBeNull()
+  })
+
+  it('parses an empty object to an empty row list', () => {
+    expect(parseHeaderOverridesJson('{}')).toEqual([])
+  })
+})
+
+describe('serializeHeaderOverrideRows', () => {
+  it('serializes named rows and skips empty placeholder rows', () => {
+    const text = serializeHeaderOverrideRows([
+      { name: ' user-agent ', value: ' my-client/1.0 ' },
+      { name: '', value: 'ignored' },
+      { name: 'x-app', value: '' }
+    ])
+    expect(JSON.parse(text)).toEqual({ 'user-agent': 'my-client/1.0', 'x-app': '' })
+  })
+
+  it('round-trips with parseHeaderOverridesJson', () => {
+    const rows = [
+      { name: 'a-header', value: '1' },
+      { name: 'b-header', value: '2' }
+    ]
+    expect(parseHeaderOverridesJson(serializeHeaderOverrideRows(rows))).toEqual(rows)
+  })
+})
+
+describe('isCustomGrokBaseUrl', () => {
+  it('treats only the default CLI gateway host as not customized', () => {
+    expect(isCustomGrokBaseUrl('https://cli-chat-proxy.grok.com/v1')).toBe(false)
+    expect(isCustomGrokBaseUrl('HTTPS://CLI-CHAT-PROXY.GROK.COM:443/')).toBe(false)
+  })
+
+  it('treats manually switched official/regional endpoints as customized (must echo back)', () => {
+    expect(isCustomGrokBaseUrl('https://api.x.ai/v1')).toBe(true)
+    expect(isCustomGrokBaseUrl('https://us-west-2.api.x.ai/v1')).toBe(true)
+    expect(isCustomGrokBaseUrl('https://eu-west-1.api.x.ai/v1')).toBe(true)
+  })
+
+  it('treats empty, non-string and unparseable values as not customized', () => {
+    expect(isCustomGrokBaseUrl('')).toBe(false)
+    expect(isCustomGrokBaseUrl('   ')).toBe(false)
+    expect(isCustomGrokBaseUrl(undefined)).toBe(false)
+    expect(isCustomGrokBaseUrl(42)).toBe(false)
+    expect(isCustomGrokBaseUrl('not a url')).toBe(false)
+  })
+
+  it('treats third-party hosts as customized', () => {
+    expect(isCustomGrokBaseUrl('https://relay.example.com/v1')).toBe(true)
+    expect(isCustomGrokBaseUrl('https://relay.example.com/xai/v1')).toBe(true)
+    expect(isCustomGrokBaseUrl('http://relay.example.com/v1')).toBe(true)
+  })
+})
+
+describe('GROK_BASE_URL_PRESETS', () => {
+  it('covers the CLI gateway, official API and regional endpoints', () => {
+    const urls = GROK_BASE_URL_PRESETS.map((p) => p.url)
+    expect(urls).toEqual([
+      'https://cli-chat-proxy.grok.com/v1',
+      'https://api.x.ai/v1',
+      'https://us-east-1.api.x.ai/v1',
+      'https://us-west-2.api.x.ai/v1',
+      'https://eu-west-1.api.x.ai/v1'
+    ])
+    for (const preset of GROK_BASE_URL_PRESETS) {
+      // 每个预设要么有 i18n 标签键，要么有区域标识等字面标签
+      expect(Boolean(preset.labelKey) || Boolean(preset.label)).toBe(true)
+      if (preset.labelKey) {
+        expect(['cli', 'official']).toContain(preset.labelKey)
+      }
+    }
+    // 区域端点用区域标识作字面标签（us-east-1 这样的专有名词不做 i18n）
+    expect(GROK_BASE_URL_PRESETS[2].label).toBe('us-east-1')
+    expect(GROK_BASE_URL_PRESETS[3].label).toBe('us-west-2')
+    expect(GROK_BASE_URL_PRESETS[4].label).toBe('eu-west-1')
   })
 })
 
@@ -172,29 +290,6 @@ describe('buildHeaderOverridesObject / splitHeaderOverridesObject', () => {
       { name: 'x-app', value: 'cli' }
     ]
     expect(splitHeaderOverridesObject(buildHeaderOverridesObject(rows))).toEqual(rows)
-  })
-})
-
-describe('getHeaderOverrideTemplate', () => {
-  it('returns Claude Code CLI headers with empty values for anthropic', () => {
-    const rows = getHeaderOverrideTemplate('anthropic')
-    expect(rows.every((r) => r.value === '')).toBe(true)
-    const names = rows.map((r) => r.name)
-    expect(names).toContain('user-agent')
-    expect(names).toContain('x-app')
-    expect(names).toContain('anthropic-beta')
-    expect(names).toContain('x-stainless-lang')
-    expect(validateHeaderOverrideRows(rows)).toBeNull()
-  })
-
-  it('returns Codex CLI headers with empty values for openai', () => {
-    const rows = getHeaderOverrideTemplate('openai')
-    expect(rows.every((r) => r.value === '')).toBe(true)
-    const names = rows.map((r) => r.name)
-    expect(names).toContain('user-agent')
-    expect(names).toContain('originator')
-    expect(names).toContain('openai-beta')
-    expect(validateHeaderOverrideRows(rows)).toBeNull()
   })
 })
 
@@ -289,3 +384,88 @@ describe('validateHeaderOverrideRows session isolation headers', () => {
     expect(validateHeaderOverrideRows([{ name: 'x'.repeat(201), value: 'v' }])).toBe('invalidName')
   })
 })
+
+describe('plan_type helpers', () => {
+  describe('planTypeDisplayLabel', () => {
+    it('maps canonical + alias values to friendly labels', () => {
+      expect(planTypeDisplayLabel('plus')).toBe('Plus')
+      expect(planTypeDisplayLabel('pro')).toBe('Pro')
+      expect(planTypeDisplayLabel('chatgptpro')).toBe('Pro')
+      expect(planTypeDisplayLabel('free')).toBe('Free')
+      expect(planTypeDisplayLabel('team')).toBe('Team')
+      expect(planTypeDisplayLabel('CHATGPTPRO')).toBe('Pro')
+    })
+    it('returns unknown values verbatim', () => {
+      expect(planTypeDisplayLabel('self_serve_business')).toBe('self_serve_business')
+    })
+  })
+
+  describe('readPlanType', () => {
+    it('reads a string plan_type', () => {
+      expect(readPlanType({ plan_type: 'plus' })).toBe('plus')
+    })
+    it('treats non-string / missing values as empty', () => {
+      expect(readPlanType({ plan_type: 42 })).toBe('')
+      expect(readPlanType({ plan_type: true })).toBe('')
+      expect(readPlanType({})).toBe('')
+      expect(readPlanType(undefined)).toBe('')
+      expect(readPlanType(null)).toBe('')
+    })
+  })
+
+  describe('buildPlanTypeOptions', () => {
+    const clear = 'Clear'
+    it('returns clear + presets when current is empty', () => {
+      expect(buildPlanTypeOptions('', clear)).toEqual([
+        { value: '', label: clear },
+        { value: 'plus', label: 'Plus' },
+        { value: 'pro', label: 'Pro' },
+        { value: 'free', label: 'Free' }
+      ])
+    })
+    it('keeps canonical chatgptpro under a single friendly "Pro" option (no duplicate)', () => {
+      const opts = buildPlanTypeOptions('chatgptpro', clear)
+      const pros = opts.filter(o => o.label === 'Pro')
+      expect(pros).toHaveLength(1)
+      expect(pros[0].value).toBe('chatgptpro')
+      expect(opts.map(o => o.value)).toEqual(['', 'plus', 'chatgptpro', 'free'])
+    })
+    it('appends an unknown-but-labeled value (team) as its own option', () => {
+      const opts = buildPlanTypeOptions('team', clear)
+      expect(opts.find(o => o.value === 'team')).toEqual({ value: 'team', label: 'Team' })
+      // presets untouched
+      expect(opts.map(o => o.value)).toEqual(['', 'plus', 'pro', 'free', 'team'])
+    })
+    it('appends a fully custom value with a raw label', () => {
+      const opts = buildPlanTypeOptions('weird_x', clear)
+      expect(opts.at(-1)).toEqual({ value: 'weird_x', label: 'weird_x' })
+    })
+    it('does not duplicate an exact preset value', () => {
+      const opts = buildPlanTypeOptions('pro', clear)
+      expect(opts.filter(o => o.value === 'pro')).toHaveLength(1)
+      expect(opts.map(o => o.value)).toEqual(['', 'plus', 'pro', 'free'])
+    })
+  })
+
+  describe('applyPlanType', () => {
+    it('sets plan_type and preserves all other credential keys', () => {
+      const creds = {
+        chatgpt_account_id: 'acc',
+        email: 'a@b.c',
+        subscription_expires_at: '2026-01-01',
+        model_mapping: { x: 'y' }
+      }
+      const out = applyPlanType({ ...creds }, 'plus')
+      expect(out).toEqual({ ...creds, plan_type: 'plus' })
+    })
+    it('trims the value', () => {
+      expect(applyPlanType({}, '  pro  ')).toEqual({ plan_type: 'pro' })
+    })
+    it('deletes the key when cleared (empty), keeping other keys', () => {
+      const out = applyPlanType({ plan_type: 'pro', email: 'a@b.c' }, '')
+      expect(out).toEqual({ email: 'a@b.c' })
+      expect('plan_type' in out).toBe(false)
+    })
+  })
+})
+

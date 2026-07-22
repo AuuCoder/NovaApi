@@ -98,6 +98,18 @@ func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in
 	}
 }
 
+// ResolveUserGroupRateMultiplier resolves the same cached multiplier used by OpenAI usage billing.
+func (s *OpenAIGatewayService) ResolveUserGroupRateMultiplier(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
+	if s == nil {
+		return groupDefaultMultiplier
+	}
+	resolver := s.userGroupRateResolver
+	if resolver == nil {
+		resolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(s.cfg), nil, "service.openai_gateway")
+	}
+	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
+}
+
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	if input == nil {
@@ -119,9 +131,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ApplyOpenAIImageBillingResolution(result)
 	}
 
-	// 计算实际的新输入token（减去缓存读取的token）
-	// 因为 input_tokens 包含了 cache_read_tokens，而缓存读取的token不应按输入价格计费
-	actualInputTokens := result.Usage.InputTokens - result.Usage.CacheReadInputTokens
+	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。
+	// 将三类 token 拆成互斥桶，避免缓存写入同时按普通输入和 cache_write 重复计费。
+	actualInputTokens := result.Usage.InputTokens - result.Usage.CacheReadInputTokens - result.Usage.CacheCreationInputTokens
 	if actualInputTokens < 0 {
 		actualInputTokens = 0
 	}
@@ -142,11 +154,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		multiplier = s.cfg.Default.RateMultiplier
 	}
 	if apiKey.GroupID != nil && apiKey.Group != nil {
-		resolver := s.userGroupRateResolver
-		if resolver == nil {
-			resolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(s.cfg), nil, "service.openai_gateway")
-		}
-		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
+		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
 	// 不并入上面的 Resolve，以免污染 user:group 倍率缓存。
@@ -178,7 +186,27 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
-	cost, err = s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, videoMultiplier, tokens, serviceTier)
+	billingAccount := account
+	if account.IsShadow() {
+		billingAccount, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return err
+		}
+	}
+	longContextBillingEnabled := billingAccount.IsOpenAILongContextBillingEnabled()
+	cost, err = s.calculateOpenAIRecordUsageCost(
+		ctx,
+		result,
+		apiKey,
+		billingModels,
+		multiplier,
+		imageMultiplier,
+		videoMultiplier,
+		baseMultiplier,
+		tokens,
+		serviceTier,
+		longContextBillingEnabled,
+	)
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
 			return err
@@ -234,6 +262,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		OutputTokens:        result.Usage.OutputTokens,
 		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
+		ImageInputTokens:    result.Usage.ImageInputTokens,
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 		ImageCount:          result.ImageCount,
 		ImageSize:           optionalTrimmedStringPtr(result.ImageSize),
@@ -251,12 +280,14 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	if cost != nil {
 		usageLog.InputCost = cost.InputCost
+		usageLog.ImageInputCost = cost.ImageInputCost
 		usageLog.OutputCost = cost.OutputCost
 		usageLog.ImageOutputCost = cost.ImageOutputCost
 		usageLog.CacheCreationCost = cost.CacheCreationCost
 		usageLog.CacheReadCost = cost.CacheReadCost
 		usageLog.TotalCost = cost.TotalCost
 		usageLog.ActualCost = cost.ActualCost
+		usageLog.LongContextBillingApplied = cost.LongContextBillingApplied
 	}
 	if isVideoUsage && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = videoMultiplier
@@ -363,10 +394,19 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	multiplier float64,
 	imageMultiplier float64,
 	videoMultiplier float64,
+	webSearchMultiplier float64,
 	tokens UsageTokens,
 	serviceTier string,
+	longContextBillingEnabled bool,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
+	if result != nil && result.WebSearchCalls > 0 {
+		// Codex alpha/search 网页搜索按次计费：上游不返回 usage/token 字段，单价只取
+		// 分组覆盖价（nil 时默认 0.01 = 官方 $10/1000 次），不参与渠道级模型定价。
+		// 倍率与 image/video 按次口径一致：使用不含高峰因子的基础倍率
+		//（用户专属 > 分组 rate_multiplier > 系统默认），与分组表单的价格预览承诺一致。
+		return s.billingService.CalculateWebSearchCost(result.WebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier), nil
+	}
 	if isGrokVideoUsageResult(result, billingModels) {
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil
@@ -387,7 +427,15 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		if candidate == "" {
 			continue
 		}
-		cost, err := s.calculateOpenAIRecordUsageTokenCost(ctx, apiKey, candidate, multiplier, tokens, serviceTier)
+		cost, err := s.calculateOpenAIRecordUsageTokenCost(
+			ctx,
+			apiKey,
+			candidate,
+			multiplier,
+			tokens,
+			serviceTier,
+			longContextBillingEnabled,
+		)
 		if err == nil {
 			return cost, nil
 		}
@@ -435,21 +483,29 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 	multiplier float64,
 	tokens UsageTokens,
 	serviceTier string,
+	longContextBillingEnabled bool,
 ) (*CostBreakdown, error) {
 	if s.resolver != nil && apiKey.Group != nil {
 		gid := apiKey.Group.ID
 		return s.billingService.CalculateCostUnified(CostInput{
-			Ctx:            ctx,
-			Model:          billingModel,
-			GroupID:        &gid,
-			Tokens:         tokens,
-			RequestCount:   1,
-			RateMultiplier: multiplier,
-			ServiceTier:    serviceTier,
-			Resolver:       s.resolver,
+			Ctx:                       ctx,
+			Model:                     billingModel,
+			GroupID:                   &gid,
+			Tokens:                    tokens,
+			RequestCount:              1,
+			RateMultiplier:            multiplier,
+			ServiceTier:               serviceTier,
+			Resolver:                  s.resolver,
+			LongContextBillingEnabled: &longContextBillingEnabled,
 		})
 	}
-	return s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
+	return s.billingService.calculateCostWithServiceTierPolicy(
+		billingModel,
+		tokens,
+		multiplier,
+		serviceTier,
+		longContextBillingEnabled,
+	)
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIImageCost(

@@ -190,6 +190,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldVideoPrice480p,
 				group.FieldVideoPrice720p,
 				group.FieldVideoPrice1080p,
+				group.FieldWebSearchPricePerCall,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -325,16 +326,14 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// DeleteWithAudit 在同一事务内:
-//  1. 把(明文 key、所有者、key 名称)写入 deleted_api_key_audits;
-//  2. 软删除该 key(tombstone 覆盖 key 列以释放唯一约束)。
-//
-// 保证"被删除的 key 一定能反查到所有者"。事务模式与 group_repo.DeleteCascade 一致。
+// DeleteWithAudit keeps the legacy method name for rolling-upgrade compatibility.
+// It atomically tombstones and soft-deletes the key without retaining credential
+// material. Tombstoning releases the unique key value for safe reuse.
 func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error {
 	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())
 
 	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-		return r.deleteWithAudit(ctx, existingTx.Client(), id, tombstoneKey)
+		return r.deleteWithTombstone(ctx, existingTx.Client(), id, tombstoneKey)
 	}
 
 	tx, err := r.client.Tx(ctx)
@@ -347,7 +346,7 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 		exec = tx.Client()
 	}
 
-	if err := r.deleteWithAudit(ctx, exec, id, tombstoneKey); err != nil {
+	if err := r.deleteWithTombstone(ctx, exec, id, tombstoneKey); err != nil {
 		return err
 	}
 
@@ -357,17 +356,7 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 	return nil
 }
 
-func (r *apiKeyRepository) deleteWithAudit(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
-	// 1. 审计:数据源即 api_keys 当前行;WHERE deleted_at IS NULL 保证只对未删除行写一次。
-	if _, err := exec.ExecContext(ctx, `
-		INSERT INTO deleted_api_key_audits (key, api_key_id, user_id, key_name, deleted_at)
-		SELECT key, id, user_id, name, NOW()
-		FROM api_keys
-		WHERE id = $1 AND deleted_at IS NULL`, id); err != nil {
-		return err
-	}
-
-	// 2. 软删除(tombstone 覆盖 key)。
+func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
 	res, err := exec.ExecContext(ctx, `
 		UPDATE api_keys
 		SET key = $1, deleted_at = NOW(), updated_at = NOW()
@@ -524,17 +513,19 @@ func (r *apiKeyRepository) latestUsageLogIPs(ctx context.Context, apiKeyIDs []in
 
 func latestUsageLogIPsQuery(apiKeyIDs []int64, dialectName string) (string, []any) {
 	if dialectName == dialect.Postgres {
+		// Keep each key lookup bounded to one ordered index probe instead of ranking its full history.
 		return `
-		SELECT api_key_id, ip_address
-		FROM (
-			SELECT api_key_id, ip_address,
-				ROW_NUMBER() OVER (PARTITION BY api_key_id ORDER BY created_at DESC, id DESC) AS rn
-			FROM usage_logs
-			WHERE api_key_id = ANY($1::bigint[])
-				AND ip_address IS NOT NULL
-				AND ip_address <> ''
-		) ranked
-		WHERE rn = 1`, []any{pq.Array(apiKeyIDs)}
+		SELECT requested.api_key_id, latest.ip_address
+		FROM unnest($1::bigint[]) AS requested(api_key_id)
+		CROSS JOIN LATERAL (
+			SELECT ul.ip_address
+			FROM usage_logs AS ul
+			WHERE ul.api_key_id = requested.api_key_id
+				AND ul.ip_address IS NOT NULL
+				AND ul.ip_address <> ''
+			ORDER BY ul.created_at DESC, ul.id DESC
+			LIMIT 1
+		) AS latest`, []any{pq.Array(apiKeyIDs)}
 	}
 
 	placeholders := make([]string, len(apiKeyIDs))
@@ -925,6 +916,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,
 		Hydrated:                        true,
+		DuplicateOperationID:            derefString(g.DuplicateOperationID),
 		SubscriptionType:                g.SubscriptionType,
 		DailyLimitUSD:                   g.DailyLimitUsd,
 		WeeklyLimitUSD:                  g.WeeklyLimitUsd,
@@ -943,6 +935,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		VideoPrice480P:                  g.VideoPrice480p,
 		VideoPrice720P:                  g.VideoPrice720p,
 		VideoPrice1080P:                 g.VideoPrice1080p,
+		WebSearchPricePerCall:           g.WebSearchPricePerCall,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
